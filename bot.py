@@ -129,6 +129,10 @@ async def check_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ══════════════════════════════════════════════════════════
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Faqat shaxsiy chatda ishlaydi — guruh/kanalda e'tiborsiz
+    if update.effective_chat.type != "private":
+        return
+
     user = update.effective_user
     db.add_user(user.id, user.username or "", user.full_name or "")
 
@@ -194,6 +198,10 @@ async def back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Foydalanuvchi kod yozganda — qismlar tugmalarini ko'rsatadi"""
+    # Faqat shaxsiy chatda ishlaydi
+    if update.effective_chat.type != "private":
+        return
+
     user = update.effective_user
     db.add_user(user.id, user.username or "", user.full_name or "")
 
