@@ -1,5 +1,9 @@
 import logging
 import os
+import asyncio
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import json
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, CallbackQueryHandler,
@@ -205,9 +209,17 @@ async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     db.add_user(user.id, user.username or "", user.full_name or "")
 
-    # Admin kanal kutayotgan bo'lsa — ch_add_get_id ga yo'naltiramiz
+    # Admin kanal kutayotgan bo'lsa
     if is_admin(user.id) and context.user_data.get("waiting_channel"):
         return await ch_add_get_id(update, context)
+
+    # Admin qism kodi kutayotgan bo'lsa
+    if is_admin(user.id) and context.user_data.get("waiting_ep_code"):
+        return await addep_get_code(update, context)
+
+    # Admin yangi admin ID kutayotgan bo'lsa
+    if is_admin(user.id) and context.user_data.get("waiting_new_admin"):
+        return await adm_add_get_id(update, context)
 
     # Obuna tekshiruvi
     if not is_admin(user.id):
@@ -501,7 +513,8 @@ async def addep_select_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     cat = query.data.replace("addep_", "")
-    context.user_data["ep_cat"] = cat
+    context.user_data["ep_cat"]          = cat
+    context.user_data["waiting_ep_code"] = True  # handle_code ushlab olmasin
 
     items = db.get_all_items(cat)
     cat_name = CATEGORY_NAMES.get(cat, cat)
@@ -520,8 +533,11 @@ async def addep_select_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def addep_get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("waiting_ep_code", None)
     code = update.message.text.strip().upper()
-    cat  = context.user_data["ep_cat"]
+    cat  = context.user_data.get("ep_cat")
+    if not cat:
+        return ConversationHandler.END
     item = db.get_item(cat, code)
 
     if not item:
@@ -1171,6 +1187,131 @@ async def ch_rm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #  MAIN
 # ══════════════════════════════════════════════════════════
 
+def run_web_server():
+    """Website uchun oddiy HTTP API server"""
+    import os
+
+    SITE_PASS = os.getenv("SITE_PASSWORD", "admin123")
+    PORT      = int(os.getenv("PORT", 8080))
+
+    class APIHandler(BaseHTTPRequestHandler):
+
+        def log_message(self, format, *args):
+            pass  # HTTP loglarni o'chirish
+
+        def send_json(self, data, status=200):
+            body = json.dumps(data, ensure_ascii=False).encode()
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Length", len(body))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def send_html(self, path):
+            try:
+                with open(path, "rb") as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", "text/html; charset=utf-8")
+                self.send_header("Content-Length", len(content))
+                self.end_headers()
+                self.wfile.write(content)
+            except FileNotFoundError:
+                self.send_response(404)
+                self.end_headers()
+
+        def do_OPTIONS(self):
+            self.send_response(200)
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.end_headers()
+
+        def do_GET(self):
+            p = self.path.split("?")[0]
+
+            if p == "/" or p == "/index.html":
+                self.send_html("index.html")
+
+            elif p == "/api/stats":
+                self.send_json(db.get_stats())
+
+            elif p == "/api/content":
+                rows = []
+                for cat in ("anime", "drama", "kino"):
+                    rows.extend(db.get_all_items(cat))
+                self.send_json(rows)
+
+            elif p == "/api/users":
+                users = db.get_recent_users(50)
+                self.send_json(users)
+
+            elif p == "/api/admins":
+                admins = db.get_admins()
+                self.send_json(admins)
+
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length", 0))
+            body   = json.loads(self.rfile.read(length) or b"{}")
+            p      = self.path
+
+            if p == "/api/content":
+                cat   = body.get("category", "")
+                code  = body.get("code", "").upper()
+                title = body.get("title", "")
+                desc  = body.get("description", "")
+                if cat not in ("anime", "drama", "kino") or not code or not title:
+                    self.send_json({"ok": False, "error": "Majburiy maydonlar yetishmayapti"}, 400)
+                    return
+                db.add_item(cat, code, title, desc)
+                self.send_json({"ok": True})
+
+            elif p == "/api/admins":
+                user_id = body.get("user_id")
+                if not user_id:
+                    self.send_json({"ok": False, "error": "user_id kerak"}, 400)
+                    return
+                if user_id in ADMIN_IDS:
+                    self.send_json({"ok": False, "error": "Bu super admin"}, 400)
+                    return
+                db.add_admin(int(user_id), "", str(user_id), ADMIN_IDS[0])
+                self.send_json({"ok": True})
+
+            else:
+                self.send_response(404)
+                self.end_headers()
+
+        def do_DELETE(self):
+            p = self.path
+            # /api/content/anime/NARUTO
+            if p.startswith("/api/content/"):
+                parts = p.strip("/").split("/")
+                if len(parts) == 4:
+                    _, _, cat, code = parts
+                    ok = db.delete_item(cat, code.upper())
+                    self.send_json({"ok": ok})
+                    return
+            # /api/admins/12345
+            elif p.startswith("/api/admins/"):
+                parts = p.strip("/").split("/")
+                if len(parts) == 3:
+                    user_id = int(parts[2])
+                    ok = db.remove_admin(user_id)
+                    self.send_json({"ok": ok})
+                    return
+            self.send_response(404)
+            self.end_headers()
+
+    server = HTTPServer(("0.0.0.0", PORT), APIHandler)
+    logger.info(f"Web server {PORT}-portda ishga tushdi")
+    server.serve_forever()
+
+
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
@@ -1306,6 +1447,11 @@ def main():
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_code),       group=1)
 
     logger.info("Bot ishga tushdi...")
+
+    # Web server alohida thread da
+    web_thread = threading.Thread(target=run_web_server, daemon=True)
+    web_thread.start()
+
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
