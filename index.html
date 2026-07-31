@@ -1,0 +1,1056 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AniStream — Anime · Drama · Kino</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0d0f14;
+    --bg2:       #141720;
+    --bg3:       #1a1f2e;
+    --border:    #1e2535;
+    --purple:    #7c6af7;
+    --purple2:   #9d8fff;
+    --red:       #e94560;
+    --gold:      #f0a500;
+    --green:     #22d3a5;
+    --text:      #e8eaf6;
+    --muted:     #6b7280;
+    --card-h:    #1e2535;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg2); }
+  ::-webkit-scrollbar-thumb { background: var(--purple); border-radius: 3px; }
+
+  /* ── NAV ── */
+  nav {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 2rem; height: 64px;
+    background: rgba(13,15,20,0.85);
+    backdrop-filter: blur(20px);
+    border-bottom: 1px solid var(--border);
+  }
+  .nav-logo {
+    font-family: 'Outfit', sans-serif;
+    font-weight: 800; font-size: 1.4rem;
+    background: linear-gradient(135deg, var(--purple), var(--red));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    text-decoration: none;
+  }
+  .nav-links { display: flex; gap: 1.5rem; list-style: none; }
+  .nav-links a {
+    color: var(--muted); text-decoration: none; font-size: 0.9rem;
+    transition: color 0.2s;
+  }
+  .nav-links a:hover, .nav-links a.active { color: var(--text); }
+  .nav-tg {
+    display: flex; align-items: center; gap: 8px;
+    background: var(--purple); color: #fff; border: none;
+    padding: 8px 18px; border-radius: 8px;
+    font-family: 'Inter', sans-serif; font-size: 0.85rem; font-weight: 500;
+    cursor: pointer; text-decoration: none;
+    transition: opacity 0.2s;
+  }
+  .nav-tg:hover { opacity: 0.85; }
+
+  /* ── HERO ── */
+  .hero {
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    padding: 6rem 2rem 4rem;
+    position: relative; overflow: hidden;
+  }
+  .hero-bg {
+    position: absolute; inset: 0; z-index: 0;
+    background:
+      radial-gradient(ellipse 60% 50% at 20% 30%, rgba(124,106,247,0.15) 0%, transparent 70%),
+      radial-gradient(ellipse 50% 40% at 80% 70%, rgba(233,69,96,0.12) 0%, transparent 70%);
+  }
+  .hero-grid {
+    position: absolute; inset: 0; z-index: 0;
+    background-image:
+      linear-gradient(rgba(30,37,53,0.4) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(30,37,53,0.4) 1px, transparent 1px);
+    background-size: 40px 40px;
+    mask-image: radial-gradient(ellipse 80% 80% at 50% 50%, black 40%, transparent 100%);
+  }
+  .hero-content { position: relative; z-index: 1; text-align: center; max-width: 720px; }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: rgba(124,106,247,0.15); border: 1px solid rgba(124,106,247,0.3);
+    padding: 6px 16px; border-radius: 100px;
+    font-size: 0.8rem; color: var(--purple2); margin-bottom: 1.5rem;
+  }
+  .hero-badge span { width: 6px; height: 6px; background: var(--green);
+    border-radius: 50%; animation: pulse 2s infinite; }
+  @keyframes pulse {
+    0%,100% { opacity: 1; } 50% { opacity: 0.3; }
+  }
+  .hero h1 {
+    font-family: 'Outfit', sans-serif; font-weight: 800;
+    font-size: clamp(2.5rem, 6vw, 4.5rem); line-height: 1.1;
+    margin-bottom: 1.2rem;
+  }
+  .hero h1 .grad {
+    background: linear-gradient(135deg, var(--purple2), var(--red));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .hero p { color: var(--muted); font-size: 1.1rem; line-height: 1.7; margin-bottom: 2.5rem; }
+  .hero-btns { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+  .btn-primary {
+    display: flex; align-items: center; gap: 8px;
+    background: linear-gradient(135deg, var(--purple), #5b4fd4);
+    color: #fff; border: none; padding: 14px 28px; border-radius: 10px;
+    font-size: 0.95rem; font-weight: 600; cursor: pointer; text-decoration: none;
+    transition: transform 0.2s, box-shadow 0.2s;
+    box-shadow: 0 4px 20px rgba(124,106,247,0.3);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(124,106,247,0.4); }
+  .btn-outline {
+    display: flex; align-items: center; gap: 8px;
+    background: transparent; color: var(--text);
+    border: 1px solid var(--border); padding: 14px 28px; border-radius: 10px;
+    font-size: 0.95rem; font-weight: 500; cursor: pointer; text-decoration: none;
+    transition: border-color 0.2s, background 0.2s;
+  }
+  .btn-outline:hover { border-color: var(--purple); background: rgba(124,106,247,0.08); }
+
+  /* ── STATS BAR ── */
+  .stats-bar {
+    display: flex; justify-content: center; gap: 0;
+    border: 1px solid var(--border); border-radius: 16px;
+    background: var(--bg2); overflow: hidden;
+    max-width: 600px; margin: 3rem auto 0;
+  }
+  .stat-item {
+    flex: 1; padding: 1.2rem 1rem; text-align: center;
+    border-right: 1px solid var(--border);
+  }
+  .stat-item:last-child { border-right: none; }
+  .stat-num {
+    font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 1.6rem;
+    color: var(--text);
+  }
+  .stat-num.purple { color: var(--purple2); }
+  .stat-num.red    { color: var(--red); }
+  .stat-num.gold   { color: var(--gold); }
+  .stat-label { font-size: 0.75rem; color: var(--muted); margin-top: 2px; }
+
+  /* ── SECTIONS ── */
+  section { padding: 5rem 2rem; max-width: 1200px; margin: 0 auto; }
+  .section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 2rem; flex-wrap: wrap; gap: 1rem;
+  }
+  .section-title {
+    font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 1.6rem;
+  }
+  .section-title span { color: var(--purple2); }
+  .see-all {
+    color: var(--purple2); font-size: 0.85rem; text-decoration: none;
+    display: flex; align-items: center; gap: 4px; cursor: pointer;
+  }
+  .see-all:hover { text-decoration: underline; }
+
+  /* ── TABS ── */
+  .tabs { display: flex; gap: 8px; margin-bottom: 2rem; flex-wrap: wrap; }
+  .tab {
+    padding: 8px 20px; border-radius: 8px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); font-size: 0.85rem;
+    cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif;
+  }
+  .tab:hover { border-color: var(--purple); color: var(--text); }
+  .tab.active { background: var(--purple); border-color: var(--purple); color: #fff; }
+
+  /* ── SEARCH ── */
+  .search-wrap { position: relative; margin-bottom: 2rem; }
+  .search-input {
+    width: 100%; padding: 12px 16px 12px 44px;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); font-size: 0.9rem;
+    font-family: 'Inter', sans-serif; outline: none;
+    transition: border-color 0.2s;
+  }
+  .search-input:focus { border-color: var(--purple); }
+  .search-input::placeholder { color: var(--muted); }
+  .search-icon {
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    color: var(--muted); pointer-events: none;
+  }
+
+  /* ── CARDS GRID ── */
+  .cards-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1.2rem;
+  }
+  .card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 14px; overflow: hidden; cursor: pointer;
+    transition: transform 0.25s, border-color 0.25s, box-shadow 0.25s;
+    position: relative;
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    border-color: var(--purple);
+    box-shadow: 0 8px 30px rgba(124,106,247,0.2);
+  }
+  .card-thumb {
+    width: 100%; aspect-ratio: 3/4; background: var(--bg3);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 3rem; position: relative; overflow: hidden;
+  }
+  .card-thumb::after {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(to top, rgba(13,15,20,0.9) 0%, transparent 60%);
+  }
+  .card-ep-badge {
+    position: absolute; top: 10px; right: 10px; z-index: 2;
+    background: rgba(13,15,20,0.8); border: 1px solid var(--border);
+    padding: 3px 8px; border-radius: 6px; font-size: 0.7rem; color: var(--text);
+  }
+  .card-body { padding: 12px; }
+  .card-code {
+    font-size: 0.7rem; color: var(--purple2); font-weight: 600;
+    letter-spacing: 0.05em; text-transform: uppercase; margin-bottom: 4px;
+  }
+  .card-title {
+    font-family: 'Outfit', sans-serif; font-weight: 600; font-size: 0.95rem;
+    line-height: 1.3; margin-bottom: 8px; color: var(--text);
+  }
+  .card-desc {
+    font-size: 0.78rem; color: var(--muted); line-height: 1.5;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .card-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);
+  }
+  .cat-tag {
+    font-size: 0.7rem; padding: 2px 8px; border-radius: 4px; font-weight: 500;
+  }
+  .cat-tag.anime { background: rgba(124,106,247,0.15); color: var(--purple2); }
+  .cat-tag.drama { background: rgba(233,69,96,0.15);   color: var(--red); }
+  .cat-tag.kino  { background: rgba(240,165,0,0.15);   color: var(--gold); }
+
+  /* ── EMPTY STATE ── */
+  .empty {
+    text-align: center; padding: 4rem 2rem;
+    color: var(--muted); grid-column: 1/-1;
+  }
+  .empty-icon { font-size: 3rem; margin-bottom: 1rem; }
+
+  /* ── MODAL ── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; z-index: 200;
+    background: rgba(0,0,0,0.7); backdrop-filter: blur(8px);
+    align-items: center; justify-content: center; padding: 1rem;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 20px; width: 100%; max-width: 520px;
+    max-height: 90vh; overflow-y: auto;
+    animation: slideUp 0.25s ease;
+  }
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(30px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.5rem 1.5rem 0;
+  }
+  .modal-title { font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 1.2rem; }
+  .modal-close {
+    background: var(--bg3); border: none; color: var(--muted);
+    width: 32px; height: 32px; border-radius: 8px; cursor: pointer;
+    font-size: 1rem; display: flex; align-items: center; justify-content: center;
+    transition: color 0.2s;
+  }
+  .modal-close:hover { color: var(--text); }
+  .modal-body { padding: 1.5rem; }
+
+  /* ── FORM ── */
+  .form-group { margin-bottom: 1rem; }
+  .form-label { display: block; font-size: 0.8rem; color: var(--muted); margin-bottom: 6px; }
+  .form-input, .form-select, .form-textarea {
+    width: 100%; padding: 10px 14px;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 0.9rem;
+    font-family: 'Inter', sans-serif; outline: none;
+    transition: border-color 0.2s;
+  }
+  .form-input:focus, .form-select:focus, .form-textarea:focus { border-color: var(--purple); }
+  .form-textarea { resize: vertical; min-height: 80px; }
+  .form-select option { background: var(--bg2); }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .form-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 1.5rem; }
+  .btn-sm {
+    padding: 8px 18px; border-radius: 8px; font-size: 0.85rem; font-weight: 500;
+    cursor: pointer; border: none; font-family: 'Inter', sans-serif; transition: opacity 0.2s;
+  }
+  .btn-sm:hover { opacity: 0.85; }
+  .btn-sm.primary { background: var(--purple); color: #fff; }
+  .btn-sm.danger  { background: var(--red); color: #fff; }
+  .btn-sm.ghost   { background: var(--bg3); color: var(--muted); }
+
+  /* ── ADMIN PANEL ── */
+  .admin-panel {
+    display: none; position: fixed; inset: 0; z-index: 300;
+    background: var(--bg); overflow-y: auto;
+  }
+  .admin-panel.open { display: block; }
+  .admin-nav {
+    display: flex; align-items: center; gap: 1rem;
+    padding: 1rem 2rem; border-bottom: 1px solid var(--border);
+    background: var(--bg2); position: sticky; top: 0; z-index: 10;
+  }
+  .admin-nav-title {
+    font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 1.1rem;
+    flex: 1;
+  }
+  .admin-content { max-width: 1100px; margin: 0 auto; padding: 2rem; }
+  .admin-tabs { display: flex; gap: 8px; margin-bottom: 2rem; flex-wrap: wrap; }
+  .admin-tab {
+    padding: 10px 20px; border-radius: 8px; border: 1px solid var(--border);
+    background: transparent; color: var(--muted); font-size: 0.85rem;
+    cursor: pointer; transition: all 0.2s; font-family: 'Inter', sans-serif;
+  }
+  .admin-tab:hover { border-color: var(--purple); color: var(--text); }
+  .admin-tab.active { background: var(--purple); border-color: var(--purple); color: #fff; }
+  .admin-section { display: none; }
+  .admin-section.active { display: block; }
+
+  /* ── STATS CARDS ── */
+  .stats-grid {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+    gap: 1rem; margin-bottom: 2rem;
+  }
+  .stat-card {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1.2rem;
+  }
+  .stat-card-num {
+    font-family: 'Outfit', sans-serif; font-weight: 700; font-size: 2rem;
+  }
+  .stat-card-label { font-size: 0.8rem; color: var(--muted); margin-top: 4px; }
+
+  /* ── TABLE ── */
+  .table-wrap { background: var(--bg2); border: 1px solid var(--border); border-radius: 12px; overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; }
+  th {
+    background: var(--bg3); padding: 12px 16px;
+    text-align: left; font-size: 0.78rem; color: var(--muted);
+    font-weight: 500; border-bottom: 1px solid var(--border);
+  }
+  td { padding: 12px 16px; font-size: 0.85rem; border-bottom: 1px solid var(--border); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: rgba(255,255,255,0.02); }
+  .action-btn {
+    background: none; border: none; cursor: pointer; padding: 4px 8px;
+    border-radius: 6px; font-size: 0.75rem; transition: background 0.2s;
+  }
+  .action-btn.edit  { color: var(--purple2); }
+  .action-btn.del   { color: var(--red); }
+  .action-btn:hover { background: var(--bg3); }
+
+  /* ── TOAST ── */
+  .toast {
+    position: fixed; bottom: 2rem; right: 2rem; z-index: 999;
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 10px; padding: 14px 20px;
+    font-size: 0.85rem; display: flex; align-items: center; gap: 10px;
+    transform: translateY(100px); opacity: 0;
+    transition: all 0.3s; pointer-events: none; max-width: 320px;
+  }
+  .toast.show { transform: translateY(0); opacity: 1; }
+  .toast.success { border-color: var(--green); }
+  .toast.error   { border-color: var(--red); }
+
+  /* ── ADMIN LOGIN ── */
+  .login-overlay {
+    display: none; position: fixed; inset: 0; z-index: 400;
+    background: var(--bg); align-items: center; justify-content: center;
+  }
+  .login-overlay.open { display: flex; }
+  .login-box {
+    background: var(--bg2); border: 1px solid var(--border);
+    border-radius: 20px; padding: 2.5rem; width: 100%; max-width: 380px;
+    text-align: center;
+  }
+  .login-logo {
+    font-family: 'Outfit', sans-serif; font-weight: 800; font-size: 1.8rem;
+    background: linear-gradient(135deg, var(--purple), var(--red));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    margin-bottom: 0.5rem;
+  }
+  .login-sub { color: var(--muted); font-size: 0.85rem; margin-bottom: 2rem; }
+  .password-wrap { position: relative; margin-bottom: 1rem; }
+  .password-input {
+    width: 100%; padding: 12px 16px;
+    background: var(--bg3); border: 1px solid var(--border);
+    border-radius: 10px; color: var(--text); font-size: 0.9rem;
+    font-family: 'Inter', sans-serif; outline: none; text-align: center;
+    letter-spacing: 0.15em; transition: border-color 0.2s;
+  }
+  .password-input:focus { border-color: var(--purple); }
+  .login-btn {
+    width: 100%; padding: 12px;
+    background: linear-gradient(135deg, var(--purple), #5b4fd4);
+    border: none; border-radius: 10px; color: #fff;
+    font-size: 0.95rem; font-weight: 600; cursor: pointer;
+    font-family: 'Inter', sans-serif; transition: opacity 0.2s;
+  }
+  .login-btn:hover { opacity: 0.9; }
+  .login-err { color: var(--red); font-size: 0.8rem; margin-top: 8px; min-height: 18px; }
+
+  @media (max-width: 640px) {
+    nav { padding: 0 1rem; }
+    .nav-links { display: none; }
+    section { padding: 3rem 1rem; }
+    .hero { padding: 5rem 1rem 3rem; }
+    .stats-bar { flex-direction: column; border-radius: 12px; }
+    .stat-item { border-right: none; border-bottom: 1px solid var(--border); }
+    .stat-item:last-child { border-bottom: none; }
+    .form-row { grid-template-columns: 1fr; }
+    .admin-content { padding: 1rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <a class="nav-logo" href="#">AniStream</a>
+  <ul class="nav-links">
+    <li><a href="#catalog" class="active" onclick="scrollTo('catalog')">Katalog</a></li>
+    <li><a href="#about" onclick="scrollTo('about')">Haqida</a></li>
+  </ul>
+  <div style="display:flex;gap:10px;align-items:center;">
+    <button class="btn-outline" style="padding:8px 16px;font-size:0.82rem;" onclick="openAdmin()">⚙️ Admin</button>
+    <a class="nav-tg" href="https://t.me/your_bot" target="_blank">
+      <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.94 8.19l-2.02 9.52c-.15.67-.54.84-1.09.52l-3-2.21-1.45 1.4c-.16.16-.3.3-.61.3l.22-3.09 5.6-5.06c.24-.22-.05-.34-.38-.12L7.06 14.5 4.1 13.6c-.66-.2-.67-.66.14-.98l11.63-4.49c.55-.2 1.03.13.07 1.06z"/></svg>
+      Bot
+    </a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<div class="hero">
+  <div class="hero-bg"></div>
+  <div class="hero-grid"></div>
+  <div class="hero-content">
+    <div class="hero-badge">
+      <span></span>
+      Bot faol ishlayapti
+    </div>
+    <h1>Anime, Drama va<br><span class="grad">Kinolar bir joyda</span></h1>
+    <p>O'zbek tilida dublyaj qilingan eng yaxshi anime, drama va kinolarni Telegram bot orqali tomosha qiling.</p>
+    <div class="hero-btns">
+      <a class="btn-primary" href="https://t.me/your_bot" target="_blank">
+        <svg width="18" height="18" fill="currentColor" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12s5.37 12 12 12 12-5.37 12-12S18.63 0 12 0zm5.94 8.19l-2.02 9.52c-.15.67-.54.84-1.09.52l-3-2.21-1.45 1.4c-.16.16-.3.3-.61.3l.22-3.09 5.6-5.06c.24-.22-.05-.34-.38-.12L7.06 14.5 4.1 13.6c-.66-.2-.67-.66.14-.98l11.63-4.49c.55-.2 1.03.13.07 1.06z"/></svg>
+        Botga o'tish
+      </a>
+      <button class="btn-outline" onclick="document.getElementById('catalog').scrollIntoView({behavior:'smooth'})">
+        📚 Katalogni ko'rish
+      </button>
+    </div>
+    <div class="stats-bar" id="heroStats">
+      <div class="stat-item">
+        <div class="stat-num purple" id="s-anime">—</div>
+        <div class="stat-label">🎌 Anime</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num red" id="s-drama">—</div>
+        <div class="stat-label">🎭 Drama</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num gold" id="s-kino">—</div>
+        <div class="stat-label">🎬 Kino</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num" id="s-ep">—</div>
+        <div class="stat-label">📺 Qismlar</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-num" id="s-users">—</div>
+        <div class="stat-label">👥 Foydalanuvchi</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- CATALOG -->
+<section id="catalog">
+  <div class="section-header">
+    <h2 class="section-title">Barcha <span>Kontentlar</span></h2>
+  </div>
+  <div class="tabs">
+    <button class="tab active" onclick="filterCat('all',this)">Hammasi</button>
+    <button class="tab" onclick="filterCat('anime',this)">🎌 Anime</button>
+    <button class="tab" onclick="filterCat('drama',this)">🎭 Drama</button>
+    <button class="tab" onclick="filterCat('kino',this)">🎬 Kino</button>
+  </div>
+  <div class="search-wrap">
+    <svg class="search-icon" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    <input class="search-input" id="searchInput" placeholder="Nom yoki kod bo'yicha qidirish..." oninput="filterSearch()">
+  </div>
+  <div class="cards-grid" id="cardsGrid">
+    <div class="empty"><div class="empty-icon">⏳</div><p>Yuklanmoqda...</p></div>
+  </div>
+</section>
+
+<!-- ABOUT -->
+<section id="about" style="text-align:center; padding-bottom:6rem;">
+  <h2 class="section-title" style="margin-bottom:1rem;">Bot haqida</h2>
+  <p style="color:var(--muted);max-width:500px;margin:0 auto 2rem;line-height:1.7;">
+    AniStream Telegram boti orqali anime, drama va kinolarni qulay tarzda tomosha qiling. Barcha kontent o'zbek tilida.
+  </p>
+  <div style="display:flex;gap:1rem;justify-content:center;flex-wrap:wrap;">
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:1.5rem;min-width:180px;">
+      <div style="font-size:2rem;margin-bottom:8px;">🎌</div>
+      <div style="font-family:'Outfit',sans-serif;font-weight:600;">Anime</div>
+      <div style="color:var(--muted);font-size:0.82rem;margin-top:4px;">Dublyaj qilingan</div>
+    </div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:1.5rem;min-width:180px;">
+      <div style="font-size:2rem;margin-bottom:8px;">🎭</div>
+      <div style="font-family:'Outfit',sans-serif;font-weight:600;">Drama</div>
+      <div style="color:var(--muted);font-size:0.82rem;margin-top:4px;">Koreya & Xitoy</div>
+    </div>
+    <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:1.5rem;min-width:180px;">
+      <div style="font-size:2rem;margin-bottom:8px;">🎬</div>
+      <div style="font-family:'Outfit',sans-serif;font-weight:600;">Kino</div>
+      <div style="color:var(--muted);font-size:0.82rem;margin-top:4px;">Tarjima kinolar</div>
+    </div>
+  </div>
+</section>
+
+<!-- ADMIN LOGIN -->
+<div class="login-overlay" id="loginOverlay">
+  <div class="login-box">
+    <div class="login-logo">AniStream</div>
+    <div class="login-sub">Admin panelga kirish</div>
+    <div class="password-wrap">
+      <input class="password-input" id="passInput" type="password" placeholder="Parol" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div class="login-err" id="loginErr"></div>
+    <button class="login-btn" onclick="doLogin()" style="margin-top:8px;">Kirish</button>
+    <button class="btn-sm ghost" onclick="closeLogin()" style="margin-top:12px;width:100%;">Bekor</button>
+  </div>
+</div>
+
+<!-- ADMIN PANEL -->
+<div class="admin-panel" id="adminPanel">
+  <div class="admin-nav">
+    <button class="btn-sm ghost" onclick="closeAdmin()">← Chiqish</button>
+    <div class="admin-nav-title">⚙️ Admin Panel</div>
+    <button class="btn-sm primary" onclick="openAddModal()">+ Qo'shish</button>
+  </div>
+  <div class="admin-content">
+    <div class="admin-tabs">
+      <button class="admin-tab active" onclick="showAdminTab('stats',this)">📊 Statistika</button>
+      <button class="admin-tab" onclick="showAdminTab('content',this)">🎬 Kontent</button>
+      <button class="admin-tab" onclick="showAdminTab('users',this)">👥 Foydalanuvchilar</button>
+      <button class="admin-tab" onclick="showAdminTab('admins',this)">🔑 Adminlar</button>
+    </div>
+
+    <!-- STATS -->
+    <div class="admin-section active" id="tab-stats">
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="stat-card-num" style="color:var(--purple2)" id="a-anime">—</div>
+          <div class="stat-card-label">🎌 Anime</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-num" style="color:var(--red)" id="a-drama">—</div>
+          <div class="stat-card-label">🎭 Drama</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-num" style="color:var(--gold)" id="a-kino">—</div>
+          <div class="stat-card-label">🎬 Kino</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-num" id="a-ep">—</div>
+          <div class="stat-card-label">📺 Jami qismlar</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-card-num" style="color:var(--green)" id="a-users">—</div>
+          <div class="stat-card-label">👥 Foydalanuvchilar</div>
+        </div>
+      </div>
+      <p style="color:var(--muted);font-size:0.82rem;">Statistika bot API dan olinadi. Bot serverda ishlayotgan bo'lishi kerak.</p>
+    </div>
+
+    <!-- CONTENT -->
+    <div class="admin-section" id="tab-content">
+      <div style="display:flex;gap:8px;margin-bottom:1.5rem;flex-wrap:wrap;">
+        <button class="tab active" onclick="filterAdminCat('all',this)" style="font-size:0.8rem;">Hammasi</button>
+        <button class="tab" onclick="filterAdminCat('anime',this)" style="font-size:0.8rem;">Anime</button>
+        <button class="tab" onclick="filterAdminCat('drama',this)" style="font-size:0.8rem;">Drama</button>
+        <button class="tab" onclick="filterAdminCat('kino',this)" style="font-size:0.8rem;">Kino</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>Kod</th><th>Nom</th><th>Kategoriya</th><th>Qismlar</th><th>Qo'shilgan</th><th>Amal</th></tr>
+          </thead>
+          <tbody id="contentTable"><tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">Yuklanmoqda...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- USERS -->
+    <div class="admin-section" id="tab-users">
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>ID</th><th>Username</th><th>Ism</th><th>Qo'shilgan</th></tr>
+          </thead>
+          <tbody id="usersTable"><tr><td colspan="4" style="text-align:center;color:var(--muted);padding:2rem;">Yuklanmoqda...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ADMINS -->
+    <div class="admin-section" id="tab-admins">
+      <div style="margin-bottom:1.5rem;">
+        <button class="btn-sm primary" onclick="openAddAdminModal()">+ Admin qo'shish</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr><th>ID</th><th>Username</th><th>Ism</th><th>Kim qo'shgan</th><th>Amal</th></tr>
+          </thead>
+          <tbody id="adminsTable"><tr><td colspan="5" style="text-align:center;color:var(--muted);padding:2rem;">Yuklanmoqda...</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD CONTENT MODAL -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title" id="addModalTitle">➕ Kontent qo'shish</div>
+      <button class="modal-close" onclick="closeAddModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="editId">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Kategoriya</label>
+          <select class="form-select" id="fCat">
+            <option value="anime">🎌 Anime</option>
+            <option value="drama">🎭 Drama</option>
+            <option value="kino">🎬 Kino</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Kod (unikal)</label>
+          <input class="form-input" id="fCode" placeholder="NARUTO" style="text-transform:uppercase">
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Sarlavha</label>
+        <input class="form-input" id="fTitle" placeholder="Naruto Shippuden">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Tavsif (ixtiyoriy)</label>
+        <textarea class="form-textarea" id="fDesc" placeholder="Qisqacha tavsif..."></textarea>
+      </div>
+      <div class="form-actions">
+        <button class="btn-sm ghost" onclick="closeAddModal()">Bekor</button>
+        <button class="btn-sm primary" onclick="saveContent()">Saqlash</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ADD ADMIN MODAL -->
+<div class="modal-overlay" id="addAdminModal">
+  <div class="modal">
+    <div class="modal-header">
+      <div class="modal-title">👤 Admin qo'shish</div>
+      <button class="modal-close" onclick="document.getElementById('addAdminModal').classList.remove('open')">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Telegram User ID</label>
+        <input class="form-input" id="fAdminId" placeholder="123456789" type="number">
+      </div>
+      <p style="color:var(--muted);font-size:0.78rem;margin-top:8px;">
+        Foydalanuvchi avval botga /start bosgan bo'lishi kerak.
+      </p>
+      <div class="form-actions">
+        <button class="btn-sm ghost" onclick="document.getElementById('addAdminModal').classList.remove('open')">Bekor</button>
+        <button class="btn-sm primary" onclick="saveAdmin()">Qo'shish</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div class="toast" id="toast"></div>
+
+<script>
+// ── CONFIG ──────────────────────────────────────────────────────────────
+// Bot API manzili — Railway da bot ishlayotgan URL
+// Misol: https://yourapp.railway.app
+const API_BASE = '';  // Bo'sh qolsa — bir xil serverdan ishlaydi
+const BOT_USERNAME = 'your_bot';  // @botingiz username ini shu yerga yozing
+
+// ── STATE ──────────────────────────────────────────────────────────────
+let allContent = [];
+let currentCat = 'all';
+let adminCat   = 'all';
+let isLoggedIn = false;
+
+// ── INIT ───────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Bot linkini o'rnatish
+  document.querySelectorAll('[data-bot-link]').forEach(el => {
+    el.href = `https://t.me/${BOT_USERNAME}`;
+  });
+  loadStats();
+  loadContent();
+  // Admin avtomatik kirish tekshiruvi
+  const saved = localStorage.getItem('adminLoggedIn');
+  if (saved === 'true') {
+    isLoggedIn = true;
+  }
+});
+
+// ── API ────────────────────────────────────────────────────────────────
+async function api(path, opts = {}) {
+  try {
+    const res = await fetch(API_BASE + path, {
+      headers: { 'Content-Type': 'application/json', ...opts.headers },
+      ...opts
+    });
+    return await res.json();
+  } catch {
+    return null;
+  }
+}
+
+// ── STATS ──────────────────────────────────────────────────────────────
+async function loadStats() {
+  const data = await api('/api/stats');
+  if (!data) return;
+  document.getElementById('s-anime').textContent  = data.anime  ?? '—';
+  document.getElementById('s-drama').textContent  = data.drama  ?? '—';
+  document.getElementById('s-kino').textContent   = data.kino   ?? '—';
+  document.getElementById('s-ep').textContent     = data.episodes ?? '—';
+  document.getElementById('s-users').textContent  = data.users  ?? '—';
+  document.getElementById('a-anime').textContent  = data.anime  ?? '—';
+  document.getElementById('a-drama').textContent  = data.drama  ?? '—';
+  document.getElementById('a-kino').textContent   = data.kino   ?? '—';
+  document.getElementById('a-ep').textContent     = data.episodes ?? '—';
+  document.getElementById('a-users').textContent  = data.users  ?? '—';
+}
+
+// ── CONTENT ────────────────────────────────────────────────────────────
+async function loadContent() {
+  const data = await api('/api/content');
+  allContent = data || [];
+  renderCards(allContent);
+  renderContentTable(allContent);
+}
+
+const CAT_EMOJI = { anime:'🎌', drama:'🎭', kino:'🎬' };
+const CAT_ICON  = { anime:'🎌', drama:'🎭', kino:'🎬' };
+
+function renderCards(items) {
+  const grid = document.getElementById('cardsGrid');
+  const q    = document.getElementById('searchInput').value.toLowerCase();
+  let filtered = items;
+  if (currentCat !== 'all') filtered = filtered.filter(i => i.category === currentCat);
+  if (q) filtered = filtered.filter(i =>
+    i.title.toLowerCase().includes(q) || i.code.toLowerCase().includes(q)
+  );
+
+  if (!filtered.length) {
+    grid.innerHTML = `<div class="empty"><div class="empty-icon">📭</div><p>Hech narsa topilmadi</p></div>`;
+    return;
+  }
+  grid.innerHTML = filtered.map(item => `
+    <div class="card" onclick="openBot('${item.code}')">
+      <div class="card-thumb">
+        ${CAT_ICON[item.category] || '🎬'}
+        <div class="card-ep-badge">${item.episode_count || 0} qism</div>
+      </div>
+      <div class="card-body">
+        <div class="card-code">${item.code}</div>
+        <div class="card-title">${item.title}</div>
+        ${item.description ? `<div class="card-desc">${item.description}</div>` : ''}
+        <div class="card-footer">
+          <span class="cat-tag ${item.category}">${CAT_EMOJI[item.category]} ${item.category}</span>
+          <span style="font-size:0.75rem;color:var(--muted)">▶ Ko'rish</span>
+        </div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function openBot(code) {
+  window.open(`https://t.me/${BOT_USERNAME}?start=${code}`, '_blank');
+}
+
+function filterCat(cat, btn) {
+  currentCat = cat;
+  document.querySelectorAll('.tabs .tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderCards(allContent);
+}
+
+function filterSearch() { renderCards(allContent); }
+
+// ── ADMIN ──────────────────────────────────────────────────────────────
+function openAdmin() {
+  const saved = localStorage.getItem('adminLoggedIn');
+  if (saved === 'true') {
+    showAdminPanel();
+  } else {
+    document.getElementById('loginOverlay').classList.add('open');
+    setTimeout(() => document.getElementById('passInput').focus(), 100);
+  }
+}
+
+function doLogin() {
+  const pass = document.getElementById('passInput').value;
+  const err  = document.getElementById('loginErr');
+  // Parolni localStorage da saqlangan yoki default bilan solishtirish
+  const correctPass = localStorage.getItem('siteAdminPass') || 'admin123';
+  if (pass === correctPass) {
+    localStorage.setItem('adminLoggedIn', 'true');
+    isLoggedIn = true;
+    document.getElementById('loginOverlay').classList.remove('open');
+    document.getElementById('passInput').value = '';
+    err.textContent = '';
+    showAdminPanel();
+  } else {
+    err.textContent = '❌ Parol noto\'g\'ri';
+    document.getElementById('passInput').value = '';
+  }
+}
+
+function closeLogin() {
+  document.getElementById('loginOverlay').classList.remove('open');
+  document.getElementById('passInput').value = '';
+  document.getElementById('loginErr').textContent = '';
+}
+
+function showAdminPanel() {
+  document.getElementById('adminPanel').classList.add('open');
+  loadStats();
+  loadContent();
+  loadUsers();
+  loadAdmins();
+}
+
+function closeAdmin() {
+  document.getElementById('adminPanel').classList.remove('open');
+}
+
+function showAdminTab(tab, btn) {
+  document.querySelectorAll('.admin-section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.admin-tab').forEach(b => b.classList.remove('active'));
+  document.getElementById('tab-' + tab).classList.add('active');
+  btn.classList.add('active');
+}
+
+// ── CONTENT TABLE ──────────────────────────────────────────────────────
+function renderContentTable(items) {
+  let filtered = items;
+  if (adminCat !== 'all') filtered = filtered.filter(i => i.category === adminCat);
+  const tbody = document.getElementById('contentTable');
+  if (!filtered.length) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--muted);padding:2rem;">Bo'sh</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = filtered.map(i => `
+    <tr>
+      <td><code style="color:var(--purple2)">${i.code}</code></td>
+      <td>${i.title}</td>
+      <td><span class="cat-tag ${i.category}">${CAT_EMOJI[i.category]} ${i.category}</span></td>
+      <td>${i.episode_count || 0}</td>
+      <td style="color:var(--muted);font-size:0.78rem;">${i.added_at ? i.added_at.slice(0,10) : '—'}</td>
+      <td>
+        <button class="action-btn edit" onclick="editContent(${JSON.stringify(i).replace(/"/g,'&quot;')})">✏️</button>
+        <button class="action-btn del" onclick="deleteContent('${i.category}','${i.code}')">🗑</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function filterAdminCat(cat, btn) {
+  adminCat = cat;
+  document.querySelectorAll('#tab-content .tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderContentTable(allContent);
+}
+
+// ── ADD / EDIT CONTENT ─────────────────────────────────────────────────
+function openAddModal() {
+  document.getElementById('addModalTitle').textContent = '➕ Kontent qo\'shish';
+  document.getElementById('editId').value   = '';
+  document.getElementById('fCat').value     = 'anime';
+  document.getElementById('fCode').value    = '';
+  document.getElementById('fTitle').value   = '';
+  document.getElementById('fDesc').value    = '';
+  document.getElementById('addModal').classList.add('open');
+}
+
+function editContent(item) {
+  document.getElementById('addModalTitle').textContent = '✏️ Tahrirlash';
+  document.getElementById('editId').value   = item.code;
+  document.getElementById('fCat').value     = item.category;
+  document.getElementById('fCode').value    = item.code;
+  document.getElementById('fTitle').value   = item.title;
+  document.getElementById('fDesc').value    = item.description || '';
+  document.getElementById('addModal').classList.add('open');
+}
+
+function closeAddModal() {
+  document.getElementById('addModal').classList.remove('open');
+}
+
+async function saveContent() {
+  const cat   = document.getElementById('fCat').value;
+  const code  = document.getElementById('fCode').value.trim().toUpperCase();
+  const title = document.getElementById('fTitle').value.trim();
+  const desc  = document.getElementById('fDesc').value.trim();
+  if (!code || !title) { showToast('Kod va nom majburiy!', 'error'); return; }
+
+  const res = await api('/api/content', {
+    method: 'POST',
+    body: JSON.stringify({ category: cat, code, title, description: desc })
+  });
+  if (res && res.ok) {
+    showToast('✅ Saqlandi!', 'success');
+    closeAddModal();
+    loadContent();
+  } else {
+    showToast('❌ Xatolik yuz berdi', 'error');
+  }
+}
+
+async function deleteContent(cat, code) {
+  if (!confirm(`"${code}" ni o'chirasizmi?`)) return;
+  const res = await api(`/api/content/${cat}/${code}`, { method: 'DELETE' });
+  if (res && res.ok) {
+    showToast('🗑 O\'chirildi', 'success');
+    loadContent();
+  } else {
+    showToast('❌ Xatolik', 'error');
+  }
+}
+
+// ── USERS ──────────────────────────────────────────────────────────────
+async function loadUsers() {
+  const data = await api('/api/users');
+  const tbody = document.getElementById('usersTable');
+  if (!data || !data.length) {
+    tbody.innerHTML = `<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:2rem;">Bo'sh</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = data.map(u => `
+    <tr>
+      <td><code style="color:var(--muted)">${u.user_id}</code></td>
+      <td>${u.username ? '@'+u.username : '—'}</td>
+      <td>${u.full_name || '—'}</td>
+      <td style="color:var(--muted);font-size:0.78rem;">${u.joined_at ? u.joined_at.slice(0,10) : '—'}</td>
+    </tr>
+  `).join('');
+}
+
+// ── ADMINS ─────────────────────────────────────────────────────────────
+async function loadAdmins() {
+  const data = await api('/api/admins');
+  const tbody = document.getElementById('adminsTable');
+  if (!data || !data.length) {
+    tbody.innerHTML = `<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:2rem;">Qo'shimcha admin yo'q</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = data.map(a => `
+    <tr>
+      <td><code style="color:var(--muted)">${a.user_id}</code></td>
+      <td>${a.username ? '@'+a.username : '—'}</td>
+      <td>${a.full_name || '—'}</td>
+      <td style="color:var(--muted)">${a.added_by}</td>
+      <td><button class="action-btn del" onclick="removeAdmin(${a.user_id})">🗑</button></td>
+    </tr>
+  `).join('');
+}
+
+function openAddAdminModal() {
+  document.getElementById('fAdminId').value = '';
+  document.getElementById('addAdminModal').classList.add('open');
+}
+
+async function saveAdmin() {
+  const userId = document.getElementById('fAdminId').value.trim();
+  if (!userId) { showToast('ID kiriting!', 'error'); return; }
+  const res = await api('/api/admins', {
+    method: 'POST',
+    body: JSON.stringify({ user_id: parseInt(userId) })
+  });
+  if (res && res.ok) {
+    showToast('✅ Admin qo\'shildi!', 'success');
+    document.getElementById('addAdminModal').classList.remove('open');
+    loadAdmins();
+  } else {
+    showToast(res?.error || '❌ Xatolik', 'error');
+  }
+}
+
+async function removeAdmin(userId) {
+  if (!confirm('Bu adminni o\'chirasizmi?')) return;
+  const res = await api(`/api/admins/${userId}`, { method: 'DELETE' });
+  if (res && res.ok) { showToast('🗑 O\'chirildi', 'success'); loadAdmins(); }
+  else showToast('❌ Xatolik', 'error');
+}
+
+// ── TOAST ──────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = 'success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = `toast ${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── CLOSE MODALS ON OVERLAY CLICK ─────────────────────────────────────
+document.getElementById('addModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeAddModal();
+});
+document.getElementById('loginOverlay').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeLogin();
+});
+document.getElementById('addAdminModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) e.currentTarget.classList.remove('open');
+});
+</script>
+</body>
+</html>
