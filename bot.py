@@ -30,7 +30,8 @@ ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "7356097969").split(",")]
     ADMIN_MSG,
     ADD_CHANNEL,
     ADD_ADMIN,
-) = range(16)
+    POSTER_CODE, POSTER_IMG,
+) = range(18)
 
 CATEGORY_NAMES = {
     "anime": "🎌 Anime",
@@ -200,6 +201,123 @@ async def back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await start(update, context)
 
 
+# ══════════════════════════════════════════════════════════
+#  POSTER QO'SHISH
+# ══════════════════════════════════════════════════════════
+
+async def admin_poster_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    if not is_admin(query.from_user.id):
+        return
+
+    keyboard = [
+        [
+            InlineKeyboardButton("🎌 Anime", callback_data="poster_cat_anime"),
+            InlineKeyboardButton("🎭 Drama", callback_data="poster_cat_drama"),
+            InlineKeyboardButton("🎬 Kino",  callback_data="poster_cat_kino"),
+        ],
+        [InlineKeyboardButton("🔙 Admin Panel", callback_data="admin_panel")]
+    ]
+    await query.edit_message_text(
+        "🖼 <b>Poster qo'shish</b>\n\nKategoriya tanlang:",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+
+
+async def poster_select_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    cat = query.data.replace("poster_cat_", "")
+    context.user_data["poster_cat"]      = cat
+    context.user_data["waiting_poster_code"] = True
+
+    items    = db.get_all_items(cat)
+    cat_name = CATEGORY_NAMES.get(cat, cat)
+
+    if not items:
+        await query.edit_message_text(f"{cat_name} bo'sh.")
+        return ConversationHandler.END
+
+    lines = [f"🖼 {cat_name} — poster qo'shish\n\nSeriallar:\n"]
+    for item in items:
+        has_poster = "🖼" if item.get("poster") else "  "
+        lines.append(f"  {has_poster} <code>{item['code']}</code> — {item['title']}")
+    lines.append("\n✏️ <b>Serial kodini yozing:</b>")
+
+    keyboard = [[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_poster")]]
+    await query.edit_message_text(
+        "\n".join(lines),
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+    return POSTER_CODE
+
+
+async def poster_get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("waiting_poster_code", None)
+    code = update.message.text.strip().upper()
+    cat  = context.user_data.get("poster_cat")
+    item = db.get_item(cat, code)
+
+    if not item:
+        await update.message.reply_text(
+            f"❌ <code>{code}</code> topilmadi. Qaytadan yozing:",
+            parse_mode="HTML"
+        )
+        return POSTER_CODE
+
+    context.user_data["poster_code"] = code
+    context.user_data["waiting_poster_img"] = True
+
+    has_poster = "✅ Hozir poster bor" if item.get("poster") else "❌ Hozir poster yo'q"
+    keyboard = [[InlineKeyboardButton("🔙 Bekor", callback_data="admin_panel")]]
+    await update.message.reply_text(
+        f"🖼 <b>{item['title']}</b> uchun poster yuboring:\n\n"
+        f"{has_poster}\n\n"
+        f"Yangi rasm yuboring (foto sifatida):",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+    return POSTER_IMG
+
+
+async def poster_get_img(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data.pop("waiting_poster_img", None)
+    cat  = context.user_data.get("poster_cat")
+    code = context.user_data.get("poster_code")
+
+    if not cat or not code:
+        return ConversationHandler.END
+
+    if update.message.photo:
+        file_id = update.message.photo[-1].file_id
+    elif update.message.document and update.message.document.mime_type and \
+         update.message.document.mime_type.startswith("image"):
+        file_id = update.message.document.file_id
+    else:
+        await update.message.reply_text("📷 Faqat rasm yuboring:")
+        return POSTER_IMG
+
+    db.update_poster(cat, code, file_id)
+    item = db.get_item(cat, code)
+
+    keyboard = [
+        [InlineKeyboardButton("🖼 Yana poster qo'sh", callback_data="admin_poster")],
+        [InlineKeyboardButton("🔙 Admin Panel",        callback_data="admin_panel")],
+    ]
+    await update.message.reply_text(
+        f"✅ <b>{item['title']}</b> uchun poster saqlandi!\n\n"
+        f"Website da avtomatik ko'rinadi. 🌐",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+    context.user_data.pop("poster_cat",  None)
+    context.user_data.pop("poster_code", None)
+    return ConversationHandler.END
+
+
 async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Foydalanuvchi kod yozganda — qismlar tugmalarini ko'rsatadi"""
     # Faqat shaxsiy chatda ishlaydi
@@ -216,6 +334,10 @@ async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     # Admin qism kodi kutayotgan bo'lsa
     if is_admin(user.id) and context.user_data.get("waiting_ep_code"):
         return await addep_get_code(update, context)
+
+    # Admin poster kodi kutayotgan bo'lsa
+    if is_admin(user.id) and context.user_data.get("waiting_poster_code"):
+        return await poster_get_code(update, context)
 
     # Admin yangi admin ID kutayotgan bo'lsa
     if is_admin(user.id) and context.user_data.get("waiting_new_admin"):
@@ -367,10 +489,13 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ],
         [
             InlineKeyboardButton("🗑 O'chirish",     callback_data="admin_delete"),
-            InlineKeyboardButton("📊 Statistika",    callback_data="admin_stats"),
+            InlineKeyboardButton("🖼 Poster qo'sh",  callback_data="admin_poster"),
         ],
         [
+            InlineKeyboardButton("📊 Statistika",    callback_data="admin_stats"),
             InlineKeyboardButton("📢 Broadcast",     callback_data="admin_broadcast"),
+        ],
+        [
             InlineKeyboardButton("🔔 Kanallar",      callback_data="admin_channels"),
         ],
     ]
@@ -1468,6 +1593,21 @@ def main():
         allow_reentry=True,
     )
 
+    # Poster qo'shish
+    poster_conv = ConversationHandler(
+        entry_points=[CallbackQueryHandler(admin_poster_start, pattern="^admin_poster$")],
+        states={
+            POSTER_CODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, poster_get_code)],
+            POSTER_IMG:  [MessageHandler(filters.PHOTO | filters.Document.IMAGE, poster_get_img)],
+        },
+        fallbacks=[
+            CommandHandler("cancel", conv_cancel),
+            CallbackQueryHandler(admin_panel, pattern="^admin_panel$"),
+        ],
+        per_user=True,
+        allow_reentry=True,
+    )
+
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", user_to_admin_cmd))
 
@@ -1478,14 +1618,17 @@ def main():
     app.add_handler(broadcast_conv,  group=0)
     app.add_handler(channel_conv,    group=0)
     app.add_handler(admin_mgmt_conv, group=0)
+    app.add_handler(poster_conv,     group=0)
 
     # Callback handlerlar — 1-guruhda
     app.add_handler(CallbackQueryHandler(show_category,      pattern="^cat_"),          group=1)
     app.add_handler(CallbackQueryHandler(back_main,          pattern="^back_main$"),    group=1)
     app.add_handler(CallbackQueryHandler(check_sub_callback, pattern="^check_sub$"),    group=1)
     app.add_handler(CallbackQueryHandler(admin_panel,        pattern="^admin_panel$"),  group=1)
-    app.add_handler(CallbackQueryHandler(admin_stats,        pattern="^admin_stats$"),  group=1)
+    app.add_handler(CallbackQueryHandler(admin_stats,        pattern="^admin_stats$"),    group=1)
     app.add_handler(CallbackQueryHandler(admin_channels,     pattern="^admin_channels$"), group=1)
+    app.add_handler(CallbackQueryHandler(admin_poster_start, pattern="^admin_poster$"),   group=1)
+    app.add_handler(CallbackQueryHandler(poster_select_cat,  pattern="^poster_cat_"),     group=1)
     app.add_handler(CallbackQueryHandler(ch_del_start,       pattern="^ch_del$"),         group=1)
     app.add_handler(CallbackQueryHandler(ch_rm_callback,     pattern="^ch_rm_"),          group=1)
     app.add_handler(CallbackQueryHandler(admin_admins,       pattern="^admin_admins$"),   group=1)
