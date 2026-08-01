@@ -17,8 +17,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8897498710:AAEnb8SdQPv-09-F14riBjAqhjfVZ70wURw")
-ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "7356097969").split(",")]
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+if not BOT_TOKEN:
+    raise ValueError("BOT_TOKEN environment variable is not set!")
+
+ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
 
 # ── Conversation states ────────────────────────────────────────────────
 (
@@ -40,13 +43,20 @@ CATEGORY_NAMES = {
 }
 
 def is_admin(user_id: int) -> bool:
-    """Super admin (.env) yoki DB dagi admin"""
+    """Super admin (.env) yoki DB dagi istalgan admin"""
     return user_id in ADMIN_IDS or db.is_admin(user_id)
 
-
 def is_super_admin(user_id: int) -> bool:
-    """Faqat .env dagi super admin — adminlarni boshqara oladi"""
+    """Faqat .env dagi super admin"""
     return user_id in ADMIN_IDS
+
+def can_delete_content(user_id: int) -> bool:
+    """Kontent o'chirish huquqi"""
+    return db.can_delete_content(user_id, ADMIN_IDS)
+
+def can_manage_admins(user_id: int) -> bool:
+    """Admin boshqarish huquqi"""
+    return db.can_manage_admins(user_id, ADMIN_IDS)
 
 
 # ══════════════════════════════════════════════════════════
@@ -381,20 +391,26 @@ async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cat_name = CATEGORY_NAMES.get(found_cat, found_cat)
 
     if not episodes:
-        await update.message.reply_text(
+        text = (
             f"{cat_name} | <b>{found['title']}</b>\n\n"
-            "📭 Hali qismlar qo'shilmagan.",
-            parse_mode="HTML"
+            "📭 Hali qismlar qo'shilmagan."
         )
+        if found.get("poster"):
+            await update.message.reply_photo(
+                photo=found["poster"],
+                caption=text,
+                parse_mode="HTML"
+            )
+        else:
+            await update.message.reply_text(text, parse_mode="HTML")
         return
 
     # Qismlar tugmalari — 3 tadan qator
     ep_buttons = []
     row = []
     for ep in episodes:
-        ep_title = ep.get("title") or f"{ep['episode_num']}-qism"
         row.append(InlineKeyboardButton(
-            ep_title,
+            f"{ep['episode_num']}-qism",
             callback_data=f"ep_{found_cat}_{code}_{ep['episode_num']}"
         ))
         if len(row) == 3:
@@ -402,22 +418,30 @@ async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
             row = []
     if row:
         ep_buttons.append(row)
-
     ep_buttons.append([InlineKeyboardButton("🔙 Orqaga", callback_data=f"cat_{found_cat}")])
 
+    # Chiroyli xabar matni
+    desc_text = f"\n📝 {found['description']}\n" if found.get("description") else "\n"
     text = (
-        f"{cat_name}\n\n"
-        f"🎬 <b>{found['title']}</b>\n"
+        f"{cat_name} | <b>{found['title']}</b>"
+        f"{desc_text}"
+        f"\n📺 Jami: <b>{len(episodes)} qism</b>\n"
+        f"Qismni tanlang:"
     )
-    if found.get("description"):
-        text += f"📝 {found['description']}\n"
-    text += f"\n📺 {len(episodes)} ta qism mavjud. Birini tanlang:"
 
-    await update.message.reply_text(
-        text,
-        reply_markup=InlineKeyboardMarkup(ep_buttons),
-        parse_mode="HTML"
-    )
+    if found.get("poster"):
+        await update.message.reply_photo(
+            photo=found["poster"],
+            caption=text,
+            reply_markup=InlineKeyboardMarkup(ep_buttons),
+            parse_mode="HTML"
+        )
+    else:
+        await update.message.reply_text(
+            text,
+            reply_markup=InlineKeyboardMarkup(ep_buttons),
+            parse_mode="HTML"
+        )
 
 
 async def send_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1088,15 +1112,17 @@ async def admin_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def adm_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    if not is_super_admin(query.from_user.id):
+    if not can_manage_admins(query.from_user.id):
+        await query.answer("❌ Sizda bu huquq yo'q!", show_alert=True)
         return
     context.user_data["waiting_new_admin"] = True
     keyboard = [[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_admins")]]
     await query.edit_message_text(
         "➕ <b>Yangi admin qo'shish</b>\n\n"
-        "Admin qilmoqchi bo'lgan foydalanuvchining <b>ID</b> sini yuboring.\n\n"
-        "📌 ID ni topish: foydalanuvchi botga /start bossin,\n"
-        "keyin Statistika → Oxirgi foydalanuvchilar dan ko'ring.\n\n"
+        "Foydalanuvchi <b>ID</b> sini yuboring.\n\n"
+        "📌 Keyin rol tanlanadi:\n"
+        "• <b>Kontent admin</b> — serial qo'shish/o'chirish\n"
+        "• <b>Menejer admin</b> — kontent + admin boshqarish\n\n"
         "<i>Bekor: /cancel</i>",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
@@ -1105,7 +1131,7 @@ async def adm_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def adm_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_super_admin(update.effective_user.id):
+    if not can_manage_admins(update.effective_user.id):
         return ConversationHandler.END
 
     text = update.message.text.strip()
@@ -1122,7 +1148,6 @@ async def adm_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ADD_ADMIN
 
-    # O'zi super admin bo'lsa
     if new_id in ADMIN_IDS:
         await update.message.reply_text(
             "⚠️ Bu foydalanuvchi allaqachon super admin!",
@@ -1131,48 +1156,91 @@ async def adm_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
-    # DB dan user ma'lumotini olish
+    # Rol tanlash
+    context.user_data["new_admin_id"] = new_id
+    role_keyboard = [
+        [InlineKeyboardButton("📝 Kontent admin", callback_data=f"adm_role_content_{new_id}")],
+        [InlineKeyboardButton("👑 Menejer admin", callback_data=f"adm_role_manager_{new_id}")],
+        [InlineKeyboardButton("🔙 Bekor", callback_data="admin_admins")],
+    ]
     all_users = db.get_all_users()
     user_info = next((u for u in all_users if u["user_id"] == new_id), None)
-
-    username  = user_info["username"]  if user_info else ""
-    full_name = user_info["full_name"] if user_info else str(new_id)
-
-    db.add_admin(new_id, username, full_name, update.effective_user.id)
-
-    label = f"@{username}" if username else full_name
-    # Yangi adminga xabar yuborish
-    try:
-        await context.bot.send_message(
-            new_id,
-            "🎉 <b>Tabriklaymiz!</b>\n\n"
-            "Siz bot admini qildingiz!\n"
-            "Admin paneliga kirish: /start → Admin panel",
-            parse_mode="HTML"
-        )
-    except Exception:
-        pass
+    label = f"@{user_info['username']}" if user_info and user_info['username'] else str(new_id)
 
     await update.message.reply_text(
-        f"✅ <b>{label}</b> admin qilindi!\n"
-        f"🆔 <code>{new_id}</code>",
-        reply_markup=InlineKeyboardMarkup(keyboard),
+        f"👤 <b>{label}</b> uchun rol tanlang:\n\n"
+        "📝 <b>Kontent admin</b> — serial/qism qo'shish, o'chirish\n"
+        "👑 <b>Menejer admin</b> — kontent + admin qo'shish/o'chirish",
+        reply_markup=InlineKeyboardMarkup(role_keyboard),
         parse_mode="HTML"
     )
     return ConversationHandler.END
 
 
+async def adm_role_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Rol tanlanganda"""
+    query = update.callback_query
+    await query.answer()
+    if not can_manage_admins(query.from_user.id):
+        await query.answer("❌ Ruxsat yo'q!", show_alert=True)
+        return
+
+    parts   = query.data.split("_")  # adm_role_content_12345
+    role    = parts[2]               # content yoki manager
+    new_id  = int(parts[3])
+
+    all_users = db.get_all_users()
+    user_info = next((u for u in all_users if u["user_id"] == new_id), None)
+    username  = user_info["username"]  if user_info else ""
+    full_name = user_info["full_name"] if user_info else str(new_id)
+
+    db.add_admin(new_id, username, full_name, query.from_user.id, role)
+
+    label    = f"@{username}" if username else full_name
+    role_txt = "👑 Menejer admin" if role == "manager" else "📝 Kontent admin"
+
+    try:
+        role_info = (
+            "kontent qo'shish/o'chirish" if role == "content"
+            else "kontent + admin boshqarish"
+        )
+        await context.bot.send_message(
+            new_id,
+            f"🎉 <b>Tabriklaymiz!</b>\n\n"
+            f"Siz bot admini qildingiz!\n"
+            f"Rol: {role_txt}\n"
+            f"Huquq: {role_info}\n\n"
+            f"Admin paneliga kirish: /start → Admin panel",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
+
+    keyboard = [[InlineKeyboardButton("🔙 Adminlar", callback_data="admin_admins")]]
+    await query.edit_message_text(
+        f"✅ <b>{label}</b> {role_txt} qilindi!\n"
+        f"🆔 <code>{new_id}</code>",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
+
+
 async def adm_del_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    if not is_super_admin(query.from_user.id):
+    if not can_manage_admins(query.from_user.id):
+        await query.answer("❌ Ruxsat yo'q!", show_alert=True)
         return
 
     admins = db.get_admins()
     keyboard = []
     for a in admins:
-        label = f"@{a['username']}" if a['username'] else a['full_name'] or str(a['user_id'])
-        keyboard.append([InlineKeyboardButton(f"🗑 {label}", callback_data=f"adm_rm_{a['user_id']}")])
+        label    = f"@{a['username']}" if a['username'] else a['full_name'] or str(a['user_id'])
+        role_txt = "👑" if a.get("role") == "manager" else "📝"
+        keyboard.append([InlineKeyboardButton(
+            f"🗑 {role_txt} {label}",
+            callback_data=f"adm_rm_{a['user_id']}"
+        )])
     keyboard.append([InlineKeyboardButton("🔙 Orqaga", callback_data="admin_admins")])
 
     await query.edit_message_text(
@@ -1184,12 +1252,11 @@ async def adm_del_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def adm_rm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    if not is_super_admin(query.from_user.id):
+    if not can_manage_admins(query.from_user.id):
         await query.answer("❌ Ruxsat yo'q!", show_alert=True)
         return
     user_id = int(query.data.replace("adm_rm_", ""))
     db.remove_admin(user_id)
-    # O'chirilgan adminga xabar
     try:
         await context.bot.send_message(user_id, "ℹ️ Siz admin ro'yxatidan o'chirilding.")
     except Exception:
@@ -1296,10 +1363,10 @@ async def ch_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 parse_mode="HTML"
             )
             return ConversationHandler.END
+        logger.error(f"Kanal qo'shishda xato: {e}")
         await msg.reply_text(
             f"❌ <b>Kanal topilmadi!</b>\n\n"
-            f"Kiritilgan: <code>{text}</code>\n"
-            f"Xatolik: <code>{e}</code>\n\n"
+            f"Kiritilgan: <code>{text}</code>\n\n"
             "Mumkin bo'lgan sabablar:\n"
             "• Bot kanalga qo'shilmagan\n"
             "• ID noto'g'ri (to'g'risi: <code>-1001234567890</code>)\n\n"
@@ -1342,142 +1409,271 @@ async def ch_rm_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ══════════════════════════════════════════════════════════
 
 def run_web_server():
-    """Website uchun oddiy HTTP API server"""
+    """Website uchun xavfsiz HTTP API server"""
     import os
+    import secrets
+    import time
+    import urllib.request
 
-    SITE_PASS = os.getenv("SITE_PASSWORD", "admin123")
     PORT      = int(os.getenv("PORT", 8080))
+    SITE_PASS = os.getenv("SITE_PASSWORD", "KoreanVibe")
+    BOT_TKN   = os.getenv("BOT_TOKEN", "")
+
+    sessions  = {}   # {token: expire_time}
+    fail_log  = {}   # {ip: [timestamps]}
+    RATE_LIMIT  = 5
+    BLOCK_TIME  = 900
+    SESSION_TTL = 3600 * 8
+
+    def make_token():
+        return secrets.token_hex(32)
+
+    def valid_session(token):
+        if not token:
+            return False
+        exp = sessions.get(token)
+        if not exp:
+            return False
+        if time.time() > exp:
+            sessions.pop(token, None)
+            return False
+        return True
+
+    def is_blocked(ip):
+        now   = time.time()
+        times = [t for t in fail_log.get(ip, []) if now - t < BLOCK_TIME]
+        fail_log[ip] = times
+        return len(times) >= RATE_LIMIT
+
+    def record_fail(ip):
+        fail_log.setdefault(ip, []).append(time.time())
+
+    def escape(s):
+        if not s:
+            return ""
+        return (str(s).replace("&","&amp;").replace("<","&lt;")
+                      .replace(">","&gt;").replace('"',"&quot;"))
+
+    def safe_item(item):
+        return {k: escape(v) if isinstance(v, str) else v for k, v in item.items()}
 
     class APIHandler(BaseHTTPRequestHandler):
 
-        def log_message(self, format, *args):
-            pass  # HTTP loglarni o'chirish
+        def log_message(self, f, *a): pass
+
+        def client_ip(self):
+            return self.headers.get("X-Forwarded-For", self.client_address[0]).split(",")[0].strip()
+
+        def get_token(self):
+            for p in self.headers.get("Cookie","").split(";"):
+                p = p.strip()
+                if p.startswith("session="):
+                    return p[8:]
+            return None
+
+        def authed(self):
+            return valid_session(self.get_token())
 
         def send_json(self, data, status=200):
             body = json.dumps(data, ensure_ascii=False).encode()
             self.send_response(status)
-            self.send_header("Content-Type", "application/json; charset=utf-8")
-            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Content-Type","application/json; charset=utf-8")
+            self.send_header("X-Content-Type-Options","nosniff")
+            self.send_header("X-Frame-Options","DENY")
             self.send_header("Content-Length", len(body))
             self.end_headers()
             self.wfile.write(body)
 
+        def send_401(self):
+            self.send_json({"ok":False,"error":"Autentifikatsiya talab qilinadi"},401)
+
+        def send_file(self, path, ctype):
+            try:
+                with open(path,"rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", ctype)
+                self.send_header("Content-Length", len(data))
+                self.send_header("Cache-Control","public, max-age=86400")
+                self.end_headers()
+                self.wfile.write(data)
+            except FileNotFoundError:
+                self.send_response(404); self.end_headers()
+
         def send_html(self, path):
             try:
-                with open(path, "rb") as f:
-                    content = f.read()
+                with open(path,"rb") as f:
+                    data = f.read()
                 self.send_response(200)
-                self.send_header("Content-Type", "text/html; charset=utf-8")
-                self.send_header("Content-Length", len(content))
+                self.send_header("Content-Type","text/html; charset=utf-8")
+                self.send_header("Content-Length", len(data))
+                self.send_header("X-Frame-Options","DENY")
+                self.send_header("X-Content-Type-Options","nosniff")
                 self.end_headers()
-                self.wfile.write(content)
+                self.wfile.write(data)
             except FileNotFoundError:
-                self.send_response(404)
-                self.end_headers()
+                self.send_response(404); self.end_headers()
 
         def do_OPTIONS(self):
             self.send_response(200)
-            self.send_header("Access-Control-Allow-Origin", "*")
-            self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
-            self.send_header("Access-Control-Allow-Headers", "Content-Type")
+            self.send_header("Access-Control-Allow-Origin","same-origin")
+            self.send_header("Access-Control-Allow-Methods","GET, POST, DELETE, OPTIONS")
+            self.send_header("Access-Control-Allow-Headers","Content-Type")
             self.end_headers()
 
         def do_GET(self):
             p = self.path.split("?")[0]
 
-            if p == "/" or p == "/index.html":
-                self.send_html("index.html")
+            if p in ("/", "/index.html"):
+                self.send_html("index.html"); return
 
-            elif p == "/api/stats":
-                self.send_json(db.get_stats())
+            if p == "/api/hero-bg":
+                self.send_file("hero-bg.png","image/png"); return
 
-            elif p == "/api/content":
-                rows = []
-                for cat in ("anime", "drama", "kino"):
-                    rows.extend(db.get_all_items(cat))
-                self.send_json(rows)
-
-            elif p.startswith("/api/poster/"):
-                # /api/poster/<file_id> — Telegram dan rasm URL olish
-                import urllib.request
-                file_id = p.replace("/api/poster/", "")
-                token   = os.getenv("BOT_TOKEN", "")
-                try:
-                    url  = f"https://api.telegram.org/bot{token}/getFile?file_id={file_id}"
-                    resp = urllib.request.urlopen(url, timeout=5)
-                    data = json.loads(resp.read())
-                    if data.get("ok"):
-                        file_path = data["result"]["file_path"]
-                        file_url  = f"https://api.telegram.org/file/bot{token}/{file_path}"
-                        self.send_json({"ok": True, "url": file_url})
-                    else:
-                        self.send_json({"ok": False})
-                except Exception:
-                    self.send_json({"ok": False})
-
-            elif p == "/api/users":
-                users = db.get_recent_users(50)
-                self.send_json(users)
-
-            elif p == "/api/admins":
-                admins = db.get_admins()
-                self.send_json(admins)
-
-            else:
-                self.send_response(404)
-                self.end_headers()
-
-        def do_POST(self):
-            length = int(self.headers.get("Content-Length", 0))
-            body   = json.loads(self.rfile.read(length) or b"{}")
-            p      = self.path
+            if p == "/api/stats":
+                self.send_json(db.get_stats()); return
 
             if p == "/api/content":
-                cat   = body.get("category", "")
-                code  = body.get("code", "").upper()
-                title = body.get("title", "")
-                desc  = body.get("description", "")
-                if cat not in ("anime", "drama", "kino") or not code or not title:
-                    self.send_json({"ok": False, "error": "Majburiy maydonlar yetishmayapti"}, 400)
-                    return
-                db.add_item(cat, code, title, desc)
-                self.send_json({"ok": True})
+                rows = []
+                for cat in ("anime","drama","kino"):
+                    rows.extend(db.get_all_items(cat))
+                self.send_json(rows); return
 
+            if p.startswith("/api/poster/"):
+                file_id = p[12:].strip()
+                if not file_id or not BOT_TKN:
+                    self.send_response(400); self.end_headers(); return
+                try:
+                    url  = f"https://api.telegram.org/bot{BOT_TKN}/getFile?file_id={file_id}"
+                    req  = urllib.request.Request(url, headers={"User-Agent":"AniStream/1.0"})
+                    resp = urllib.request.urlopen(req, timeout=8)
+                    data = json.loads(resp.read())
+                    if data.get("ok"):
+                        fp      = data["result"]["file_path"]
+                        img_url = f"https://api.telegram.org/file/bot{BOT_TKN}/{fp}"
+                        ir      = urllib.request.Request(img_url, headers={"User-Agent":"AniStream/1.0"})
+                        ir_resp = urllib.request.urlopen(ir, timeout=10)
+                        img     = ir_resp.read()
+                        ctype   = ir_resp.headers.get("Content-Type","image/jpeg")
+                        self.send_response(200)
+                        self.send_header("Content-Type", ctype)
+                        self.send_header("Content-Length", len(img))
+                        self.send_header("Cache-Control","public, max-age=3600")
+                        self.end_headers()
+                        self.wfile.write(img)
+                    else:
+                        self.send_response(404); self.end_headers()
+                except Exception as ex:
+                    logger.error(f"Poster xato: {ex}")
+                    self.send_response(502); self.end_headers()
+                return
+
+            # Himoyalangan
+            if not self.authed():
+                self.send_401(); return
+
+            if p == "/api/users":
+                users = db.get_recent_users(50)
+                self.send_json([safe_item(u) for u in users])
+            elif p == "/api/admins":
+                admins = db.get_admins()
+                self.send_json([safe_item(a) for a in admins])
+            else:
+                self.send_response(404); self.end_headers()
+
+        def do_POST(self):
+            p = self.path
+
+            if p == "/api/login":
+                ip = self.client_ip()
+                if is_blocked(ip):
+                    self.send_json({"ok":False,"error":"15 daqiqa kuting"},429); return
+                try:
+                    ln   = int(self.headers.get("Content-Length",0))
+                    body = json.loads(self.rfile.read(ln) or b"{}")
+                    pw   = body.get("password","")
+                except Exception:
+                    self.send_json({"ok":False,"error":"Noto'g'ri so'rov"},400); return
+                if pw == SITE_PASS:
+                    tok = make_token()
+                    sessions[tok] = time.time() + SESSION_TTL
+                    self.send_response(200)
+                    self.send_header("Content-Type","application/json")
+                    self.send_header("Set-Cookie",
+                        f"session={tok}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_TTL}")
+                    out = json.dumps({"ok":True}).encode()
+                    self.send_header("Content-Length", len(out))
+                    self.end_headers()
+                    self.wfile.write(out)
+                else:
+                    record_fail(ip)
+                    self.send_json({"ok":False,"error":"Parol noto'g'ri"},401)
+                return
+
+            if p == "/api/logout":
+                sessions.pop(self.get_token(), None)
+                self.send_response(200)
+                self.send_header("Set-Cookie","session=; HttpOnly; Max-Age=0; Path=/")
+                out = json.dumps({"ok":True}).encode()
+                self.send_header("Content-Length", len(out))
+                self.end_headers()
+                self.wfile.write(out)
+                return
+
+            if not self.authed():
+                self.send_401(); return
+
+            try:
+                ln   = int(self.headers.get("Content-Length",0))
+                body = json.loads(self.rfile.read(ln) or b"{}")
+            except Exception:
+                self.send_json({"ok":False,"error":"Noto'g'ri so'rov"},400); return
+
+            if p == "/api/content":
+                cat   = body.get("category","")
+                code  = body.get("code","").upper().strip()
+                title = body.get("title","").strip()
+                desc  = body.get("description","").strip()
+                if cat not in ("anime","drama","kino") or not code or not title:
+                    self.send_json({"ok":False,"error":"Majburiy maydonlar"},400); return
+                db.add_item(cat, code, title, desc)
+                self.send_json({"ok":True})
             elif p == "/api/admins":
                 user_id = body.get("user_id")
+                role    = body.get("role","content")
                 if not user_id:
-                    self.send_json({"ok": False, "error": "user_id kerak"}, 400)
-                    return
-                if user_id in ADMIN_IDS:
-                    self.send_json({"ok": False, "error": "Bu super admin"}, 400)
-                    return
-                db.add_admin(int(user_id), "", str(user_id), ADMIN_IDS[0])
-                self.send_json({"ok": True})
-
+                    self.send_json({"ok":False,"error":"user_id kerak"},400); return
+                if role not in ("content","manager"):
+                    self.send_json({"ok":False,"error":"Noto'g'ri rol"},400); return
+                if int(user_id) in ADMIN_IDS:
+                    self.send_json({"ok":False,"error":"Super adminni o'zgartirb bo'lmaydi"},400); return
+                db.add_admin(int(user_id),"",str(user_id),ADMIN_IDS[0] if ADMIN_IDS else 0, role)
+                self.send_json({"ok":True})
             else:
-                self.send_response(404)
-                self.end_headers()
+                self.send_response(404); self.end_headers()
 
         def do_DELETE(self):
+            if not self.authed():
+                self.send_401(); return
             p = self.path
-            # /api/content/anime/NARUTO
             if p.startswith("/api/content/"):
                 parts = p.strip("/").split("/")
                 if len(parts) == 4:
-                    _, _, cat, code = parts
-                    ok = db.delete_item(cat, code.upper())
-                    self.send_json({"ok": ok})
-                    return
-            # /api/admins/12345
+                    _,_,cat,code = parts
+                    if cat not in ("anime","drama","kino"):
+                        self.send_json({"ok":False},400); return
+                    self.send_json({"ok": db.delete_item(cat, code.upper())}); return
             elif p.startswith("/api/admins/"):
                 parts = p.strip("/").split("/")
                 if len(parts) == 3:
-                    user_id = int(parts[2])
-                    ok = db.remove_admin(user_id)
-                    self.send_json({"ok": ok})
-                    return
-            self.send_response(404)
-            self.end_headers()
+                    try:
+                        uid = int(parts[2])
+                    except ValueError:
+                        self.send_json({"ok":False},400); return
+                    if uid in ADMIN_IDS:
+                        self.send_json({"ok":False,"error":"Super adminni o'chirib bo'lmaydi"},403); return
+                    self.send_json({"ok": db.remove_admin(uid)}); return
+            self.send_response(404); self.end_headers()
 
     server = HTTPServer(("0.0.0.0", PORT), APIHandler)
     logger.info(f"Web server {PORT}-portda ishga tushdi")
@@ -1634,6 +1830,7 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_admins,       pattern="^admin_admins$"),   group=1)
     app.add_handler(CallbackQueryHandler(adm_del_start,      pattern="^adm_del$"),        group=1)
     app.add_handler(CallbackQueryHandler(adm_rm_callback,    pattern="^adm_rm_"),         group=1)
+    app.add_handler(CallbackQueryHandler(adm_role_callback,  pattern="^adm_role_"),       group=1)
     app.add_handler(CallbackQueryHandler(send_episode,       pattern="^ep_"),           group=1)
 
     # Matn handler — oxirida
