@@ -77,9 +77,18 @@
   }
   .hero-bg {
     position: absolute; inset: 0; z-index: 0;
+    background-image: url('/api/hero-bg');
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+  }
+  .hero-bg::after {
+    content: '';
+    position: absolute; inset: 0;
     background:
+      linear-gradient(to bottom, rgba(13,15,20,0.5) 0%, rgba(13,15,20,0.3) 40%, rgba(13,15,20,0.85) 100%),
       radial-gradient(ellipse 60% 50% at 20% 30%, rgba(124,106,247,0.15) 0%, transparent 70%),
-      radial-gradient(ellipse 50% 40% at 80% 70%, rgba(233,69,96,0.12) 0%, transparent 70%);
+      radial-gradient(ellipse 50% 40% at 80% 70%, rgba(233,69,96,0.1) 0%, transparent 70%);
   }
   .hero-grid {
     position: absolute; inset: 0; z-index: 0;
@@ -713,10 +722,6 @@
 <div class="toast" id="toast"></div>
 
 <script>
-// ── CONFIG ──────────────────────────────────────────────────────────────
-// Bot API manzili — Railway da bot ishlayotgan URL
-// Misol: https://yourapp.railway.app
-const API_BASE = '';  // Bo'sh qolsa — bir xil serverdan ishlaydi
 const BOT_USERNAME = 'UzMediiaBot';
 
 // ── STATE ──────────────────────────────────────────────────────────────
@@ -726,27 +731,33 @@ let adminCat   = 'all';
 let isLoggedIn = false;
 
 // ── INIT ───────────────────────────────────────────────────────────────
+// ── XSS HIMOYA ─────────────────────────────────────────────────────────
+function esc(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+}
+
 document.addEventListener('DOMContentLoaded', () => {
-  // Bot linkini o'rnatish
-  document.querySelectorAll('[data-bot-link]').forEach(el => {
-    el.href = `https://t.me/${BOT_USERNAME}`;
-  });
   loadStats();
   loadContent();
-  // Admin avtomatik kirish tekshiruvi
-  const saved = localStorage.getItem('adminLoggedIn');
-  if (saved === 'true') {
-    isLoggedIn = true;
-  }
+  checkSession();
 });
+
+async function checkSession() {
+  const res = await api('/api/users');
+  if (res !== null) { isLoggedIn = true; }
+}
 
 // ── API ────────────────────────────────────────────────────────────────
 async function api(path, opts = {}) {
   try {
-    const res = await fetch(API_BASE + path, {
+    const res = await fetch(path, {
+      credentials: 'same-origin',
       headers: { 'Content-Type': 'application/json', ...opts.headers },
       ...opts
     });
+    if (res.status === 401) return null;
     return await res.json();
   } catch {
     return null;
@@ -794,26 +805,31 @@ function renderCards(items) {
     return;
   }
   grid.innerHTML = filtered.map(item => {
+    const safeCode  = esc(item.code);
+    const safeTitle = esc(item.title);
+    const safeDesc  = esc(item.description);
+    const safeCat   = esc(item.category);
+    const safePoster = esc(item.poster);
+    const icon = CAT_ICON[item.category] || '🎬';
     const thumbContent = item.poster
-      ? `<img src="/api/poster/${item.poster}" alt="${item.title}"
+      ? `<img src="/api/poster/${safePoster}" alt="${safeTitle}"
               style="width:100%;height:100%;object-fit:cover;position:absolute;inset:0;"
               onerror="this.style.display='none';this.nextElementSibling.style.display='flex'"
               loading="lazy">
-         <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:3rem;position:absolute;inset:0;">${CAT_ICON[item.category]}</div>`
-      : `<span style="font-size:3rem;">${CAT_ICON[item.category]}</span>`;
-
+         <div style="display:none;width:100%;height:100%;align-items:center;justify-content:center;font-size:3rem;position:absolute;inset:0;">${icon}</div>`
+      : `<span style="font-size:3rem;">${icon}</span>`;
     return `
-    <div class="card" onclick="openBot('${item.code}')">
+    <div class="card" onclick="openBot('${safeCode}')">
       <div class="card-thumb" style="position:relative;">
         ${thumbContent}
         <div class="card-ep-badge" style="position:absolute;top:10px;right:10px;z-index:2;">${item.episode_count || 0} qism</div>
       </div>
       <div class="card-body">
-        <div class="card-code">${item.code}</div>
-        <div class="card-title">${item.title}</div>
-        ${item.description ? `<div class="card-desc">${item.description}</div>` : ''}
+        <div class="card-code">${safeCode}</div>
+        <div class="card-title">${safeTitle}</div>
+        ${safeDesc ? `<div class="card-desc">${safeDesc}</div>` : ''}
         <div class="card-footer">
-          <span class="cat-tag ${item.category}">${CAT_EMOJI[item.category]} ${item.category}</span>
+          <span class="cat-tag ${safeCat}">${CAT_EMOJI[item.category] || ''} ${safeCat}</span>
           <span style="font-size:0.75rem;color:var(--muted)">▶ Ko'rish</span>
         </div>
       </div>
@@ -822,7 +838,7 @@ function renderCards(items) {
 }
 
 function openBot(code) {
-  window.open(`https://t.me/${BOT_USERNAME}?start=${code}`, '_blank');
+  window.open(`https://t.me/${BOT_USERNAME}?start=${encodeURIComponent(code)}`, '_blank');
 }
 
 function filterCat(cat, btn) {
@@ -835,9 +851,10 @@ function filterCat(cat, btn) {
 function filterSearch() { renderCards(allContent); }
 
 // ── ADMIN ──────────────────────────────────────────────────────────────
-function openAdmin() {
-  const saved = localStorage.getItem('adminLoggedIn');
-  if (saved === 'true') {
+async function openAdmin() {
+  const res = await api('/api/users');
+  if (res !== null) {
+    isLoggedIn = true;
     showAdminPanel();
   } else {
     document.getElementById('loginOverlay').classList.add('open');
@@ -845,21 +862,22 @@ function openAdmin() {
   }
 }
 
-function doLogin() {
+async function doLogin() {
   const pass = document.getElementById('passInput').value;
   const err  = document.getElementById('loginErr');
-  // Parolni localStorage da saqlangan yoki default bilan solishtirish
-  const correctPass = localStorage.getItem('siteAdminPass') || 'admin123';
-  if (pass === correctPass) {
-    localStorage.setItem('adminLoggedIn', 'true');
+  if (!pass) return;
+  const res = await api('/api/login', {
+    method: 'POST',
+    body: JSON.stringify({ password: pass })
+  });
+  document.getElementById('passInput').value = '';
+  if (res && res.ok) {
+    err.textContent = '';
     isLoggedIn = true;
     document.getElementById('loginOverlay').classList.remove('open');
-    document.getElementById('passInput').value = '';
-    err.textContent = '';
     showAdminPanel();
   } else {
-    err.textContent = '❌ Parol noto\'g\'ri';
-    document.getElementById('passInput').value = '';
+    err.textContent = '❌ ' + (res?.error || "Parol noto'g'ri");
   }
 }
 
@@ -877,7 +895,9 @@ function showAdminPanel() {
   loadAdmins();
 }
 
-function closeAdmin() {
+async function closeAdmin() {
+  await api('/api/logout', { method: 'POST' });
+  isLoggedIn = false;
   document.getElementById('adminPanel').classList.remove('open');
 }
 
@@ -985,10 +1005,10 @@ async function loadUsers() {
   }
   tbody.innerHTML = data.map(u => `
     <tr>
-      <td><code style="color:var(--muted)">${u.user_id}</code></td>
-      <td>${u.username ? '@'+u.username : '—'}</td>
-      <td>${u.full_name || '—'}</td>
-      <td style="color:var(--muted);font-size:0.78rem;">${u.joined_at ? u.joined_at.slice(0,10) : '—'}</td>
+      <td><code style="color:var(--muted)">${esc(String(u.user_id))}</code></td>
+      <td>${u.username ? '@'+esc(u.username) : '—'}</td>
+      <td>${esc(u.full_name) || '—'}</td>
+      <td style="color:var(--muted);font-size:0.78rem;">${u.joined_at ? esc(u.joined_at.slice(0,10)) : '—'}</td>
     </tr>
   `).join('');
 }
@@ -1003,11 +1023,11 @@ async function loadAdmins() {
   }
   tbody.innerHTML = data.map(a => `
     <tr>
-      <td><code style="color:var(--muted)">${a.user_id}</code></td>
-      <td>${a.username ? '@'+a.username : '—'}</td>
-      <td>${a.full_name || '—'}</td>
-      <td style="color:var(--muted)">${a.added_by}</td>
-      <td><button class="action-btn del" onclick="removeAdmin(${a.user_id})">🗑</button></td>
+      <td><code style="color:var(--muted)">${esc(String(a.user_id))}</code></td>
+      <td>${a.username ? '@'+esc(a.username) : '—'}</td>
+      <td>${esc(a.full_name) || '—'}</td>
+      <td style="color:var(--muted)">${esc(String(a.role || 'content'))}</td>
+      <td><button class="action-btn del" onclick="removeAdmin(${parseInt(a.user_id)})">🗑</button></td>
     </tr>
   `).join('');
 }
