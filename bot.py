@@ -236,22 +236,15 @@ async def show_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     category = query.data.replace("cat_", "")
     context.user_data["category"] = category
 
-    items = db.get_all_items(category)
     cat_name = CATEGORY_NAMES.get(category, category)
-
-    if not items:
-        text = f"{cat_name}\n\n📭 Hozircha hech narsa yo'q."
-    else:
-        lines = [f"{cat_name} ro'yxati:\n"]
-        for item in items:
-            ep_count = item.get("episode_count", 0)
-            ep_info = f"({ep_count} qism)" if ep_count else "(qism yo'q)"
-            lines.append(f"🔹 <code>{item['code']}</code> — {item['title']} {ep_info}")
-        lines.append(f"\n📩 Kodni yozing, masalan: <code>{items[0]['code']}</code>")
-        text = "\n".join(lines)
-
     keyboard = [[InlineKeyboardButton("🔙 Orqaga", callback_data="back_main")]]
-    await query.edit_message_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
+    await query.edit_message_text(
+        f"{cat_name}\n\n"
+        f"🔍 Serial kodini yuboring:\n"
+        f"<i>Masalan: A001, D001, K001</i>",
+        reply_markup=InlineKeyboardMarkup(keyboard),
+        parse_mode="HTML"
+    )
 
 
 async def back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -279,7 +272,8 @@ async def admin_poster_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         [InlineKeyboardButton("🔙 Admin Panel", callback_data="admin_panel")]
     ]
     await query.edit_message_text(
-        "🖼 <b>Poster qo'shish</b>\n\nKategoriya tanlang:",
+        "🖼 <b>Poster qo'shish / almashtirish</b>\n\n"
+        "Kategoriya tanlang:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
@@ -299,19 +293,60 @@ async def poster_select_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(f"{cat_name} bo'sh.")
         return ConversationHandler.END
 
-    lines = [f"🖼 {cat_name} — poster qo'shish\n\nSeriallar:\n"]
+    # Har bir serial uchun tugma — poster bor/yo'qligini ko'rsatadi
+    keyboard = []
     for item in items:
-        has_poster = "🖼" if item.get("poster") else "  "
-        lines.append(f"  {has_poster} <code>{item['code']}</code> — {item['title']}")
-    lines.append("\n✏️ <b>Serial kodini yozing:</b>")
+        has = "🖼 " if item.get("poster") else "📄 "
+        keyboard.append([InlineKeyboardButton(
+            f"{has}{item['code']} — {item['title']}",
+            callback_data=f"poster_pick_{item['code']}"
+        )])
+    keyboard.append([InlineKeyboardButton("🔙 Orqaga", callback_data="admin_poster")])
 
-    keyboard = [[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_poster")]]
     await query.edit_message_text(
-        "\n".join(lines),
+        f"🖼 <b>{cat_name}</b> — poster tanlang:\n\n"
+        f"🖼 = poster bor | 📄 = poster yo'q",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
     return POSTER_CODE
+
+
+async def poster_pick_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Tugmadan serial tanlanganda rasm so'rash"""
+    query = update.callback_query
+    await query.answer()
+    code = query.data.replace("poster_pick_", "").upper()
+    cat  = context.user_data.get("poster_cat")
+    item = db.get_item(cat, code)
+
+    if not item:
+        await query.answer("Topilmadi!", show_alert=True)
+        return
+
+    context.user_data["poster_code"]     = code
+    context.user_data["waiting_poster_img"] = True
+
+    has_poster = "✅ Poster bor — almashtirish uchun yuborish" if item.get("poster") else "❌ Poster yo'q — qo'shish uchun yuborish"
+    keyboard = [[InlineKeyboardButton("🔙 Orqaga", callback_data=f"poster_cat_{cat}")]]
+
+    if item.get("poster"):
+        await query.edit_message_text(
+            f"🖼 <b>{item['title']}</b>\n\n"
+            f"{has_poster}\n\n"
+            f"Yangi rasm yuboring:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    else:
+        await query.edit_message_text(
+            f"🖼 <b>{item['title']}</b>\n\n"
+            f"{has_poster}\n\n"
+            f"Rasm yuboring:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    return POSTER_IMG
 
 
 async def poster_get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1856,12 +1891,19 @@ def main():
     poster_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_poster_start, pattern="^admin_poster$")],
         states={
-            POSTER_CODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, poster_get_code)],
-            POSTER_IMG:  [MessageHandler(filters.PHOTO | filters.Document.IMAGE, poster_get_img)],
+            POSTER_CODE: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, poster_get_code),
+                CallbackQueryHandler(poster_pick_callback, pattern="^poster_pick_"),
+            ],
+            POSTER_IMG: [
+                MessageHandler(filters.PHOTO | filters.Document.IMAGE, poster_get_img),
+                CallbackQueryHandler(poster_select_cat, pattern="^poster_cat_"),
+            ],
         },
         fallbacks=[
             CommandHandler("cancel", conv_cancel),
-            CallbackQueryHandler(admin_panel, pattern="^admin_panel$"),
+            CallbackQueryHandler(admin_panel,       pattern="^admin_panel$"),
+            CallbackQueryHandler(admin_poster_start, pattern="^admin_poster$"),
         ],
         per_user=True,
         allow_reentry=True,
@@ -1910,4 +1952,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-    
