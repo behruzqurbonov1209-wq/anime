@@ -617,19 +617,16 @@ function renderSlider(items) {
   const dots   = document.getElementById('sliderDots');
 
   slider.innerHTML = withPoster.map((item, idx) => `
-    <div class="hero-slide" style="background-image:url('/api/poster/${esc(item.poster)}');background-position:top center;">
+    <div class="hero-slide" style="background-image:url('/api/poster/${esc(item.poster)}');background-position:center center;background-size:cover;">
       <div class="hero-slide-bg"></div>
       <div class="hero-content">
         <div class="hero-cat">${esc(CAT_LABEL[item.category] || item.category)}</div>
         <div class="hero-title">${esc(item.title)}</div>
         ${item.description ? `<div class="hero-desc">${esc(item.description)}</div>` : ''}
         <div class="hero-actions">
-          <button class="btn-watch" onclick="openDetail(${JSON.stringify(item).replace(/"/g,'&quot;')})">
+          <button class="btn-watch" onclick="openBot('${esc(item.code)}')">
             <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             Ko'rish
-          </button>
-          <button class="btn-watch" style="background:rgba(255,255,255,0.15);backdrop-filter:blur(4px);" onclick="window.open('https://t.me/${BOT_USERNAME}?start=${esc(item.code)}','_blank')">
-            Botda ochish
           </button>
         </div>
       </div>
@@ -681,7 +678,7 @@ function renderCards(items) {
       : `<div class="card-thumb-placeholder">${scat === 'anime' ? '★' : scat === 'drama' ? '▶' : '◆'}</div>`;
     const cardData = JSON.stringify(item).replace(/"/g,'&quot;');
     return `
-    <div class="card" onclick="openDetail(${cardData})">
+    <div class="card" onclick="openBot('${sc}')">
       <div class="card-thumb">
         ${thumb}
         <div class="card-overlay"></div>
@@ -697,6 +694,7 @@ function renderCards(items) {
 }
 
 function openBot(code) {
+  // t.me/bot?start=KOD — Telegram botga o'tib, avtomatik shu kodni yuboradi
   window.open(`https://t.me/${BOT_USERNAME}?start=${encodeURIComponent(code)}`, '_blank');
 }
 
