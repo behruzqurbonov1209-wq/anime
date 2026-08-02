@@ -264,15 +264,22 @@ async def admin_poster_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     keyboard = [
-        [InlineKeyboardButton("➕ Poster qo'shish",   callback_data="poster_action_add")],
+        [InlineKeyboardButton("➕ Poster qo'shish",    callback_data="poster_action_add")],
         [InlineKeyboardButton("🔄 Poster almashtirish", callback_data="poster_action_change")],
-        [InlineKeyboardButton("🔙 Admin Panel",        callback_data="admin_panel")],
+        [InlineKeyboardButton("🔙 Admin Panel",         callback_data="admin_panel")],
     ]
-    await query.edit_message_text(
-        "🖼 <b>Poster boshqaruvi</b>\n\nNima qilmoqchisiz?",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    try:
+        await query.edit_message_text(
+            "🖼 <b>Poster boshqaruvi</b>\n\nNima qilmoqchisiz?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    except Exception:
+        await query.message.reply_text(
+            "🖼 <b>Poster boshqaruvi</b>\n\nNima qilmoqchisiz?",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
 
 
 async def poster_select_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -348,11 +355,18 @@ async def poster_action_callback(update: Update, context: ContextTypes.DEFAULT_T
         ],
         [InlineKeyboardButton("🔙 Orqaga", callback_data="admin_poster")]
     ]
-    await query.edit_message_text(
-        f"{label}\n\nKategoriya tanlang:",
-        reply_markup=InlineKeyboardMarkup(keyboard),
-        parse_mode="HTML"
-    )
+    try:
+        await query.edit_message_text(
+            f"{label}\n\nKategoriya tanlang:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    except Exception:
+        await query.message.reply_text(
+            f"{label}\n\nKategoriya tanlang:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
     return POSTER_CODE
     """Tugmadan serial tanlanganda rasm so'rash"""
     query = update.callback_query
@@ -1112,29 +1126,67 @@ async def do_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
         try:
             uid = user["user_id"]
             if update.message.text:
-                await context.bot.send_message(uid, update.message.text, parse_mode="HTML")
-            elif update.message.video:
-                await context.bot.send_video(uid, update.message.video.file_id,
-                                             caption=update.message.caption or "", parse_mode="HTML")
+                await context.bot.send_message(
+                    uid, update.message.text, parse_mode="HTML"
+                )
             elif update.message.photo:
-                await context.bot.send_photo(uid, update.message.photo[-1].file_id,
-                                             caption=update.message.caption or "", parse_mode="HTML")
+                await context.bot.send_photo(
+                    uid, update.message.photo[-1].file_id,
+                    caption=update.message.caption or "",
+                    parse_mode="HTML"
+                )
+            elif update.message.video:
+                await context.bot.send_video(
+                    uid, update.message.video.file_id,
+                    caption=update.message.caption or "",
+                    parse_mode="HTML"
+                )
             elif update.message.document:
-                await context.bot.send_document(uid, update.message.document.file_id,
-                                                caption=update.message.caption or "", parse_mode="HTML")
+                await context.bot.send_document(
+                    uid, update.message.document.file_id,
+                    caption=update.message.caption or "",
+                    parse_mode="HTML"
+                )
             sent += 1
-        except Exception:
-            failed += 1
+        except Exception as e:
+            err = str(e).lower()
+            if "flood" in err or "too many" in err:
+                # Flood limit — 30 soniya kutamiz
+                import asyncio
+                await asyncio.sleep(30)
+                try:
+                    uid = user["user_id"]
+                    await context.bot.send_message(uid, update.message.text or "", parse_mode="HTML")
+                    sent += 1
+                except Exception:
+                    failed += 1
+            else:
+                failed += 1
+
+        # Har 25 xabardan keyin 1 soniya kutamiz — flood limitdan saqlanish
+        if (i + 1) % 25 == 0:
+            import asyncio
+            await asyncio.sleep(1)
+
         if (i + 1) % 10 == 0:
             try:
-                await status.edit_text(f"📤 Yuborilmoqda... {i+1}/{len(users)}")
+                await status.edit_text(
+                    f"📤 Yuborilmoqda... {i+1}/{len(users)}\n"
+                    f"✔️ {sent} | ❌ {failed}"
+                )
             except Exception:
                 pass
 
-    await status.edit_text(
-        f"✅ <b>Broadcast tugadi!</b>\n\n✔️ Yuborildi: {sent}\n❌ Xatolik: {failed}",
-        parse_mode="HTML"
-    )
+    try:
+        await status.edit_text(
+            f"✅ <b>Broadcast tugadi!</b>\n\n"
+            f"👥 Jami: {len(users)}\n"
+            f"✔️ Yuborildi: {sent}\n"
+            f"❌ Xatolik: {failed}",
+            parse_mode="HTML"
+        )
+    except Exception:
+        pass
     return ConversationHandler.END
 
 
