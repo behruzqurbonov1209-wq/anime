@@ -1949,13 +1949,12 @@ def main():
         states={
             POSTER_CODE: [
                 CallbackQueryHandler(poster_action_callback, pattern="^poster_action_"),
-                MessageHandler(filters.TEXT & ~filters.COMMAND, poster_get_code),
-                CallbackQueryHandler(poster_pick_callback,   pattern="^poster_pick_"),
                 CallbackQueryHandler(poster_select_cat,      pattern="^poster_cat_"),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, poster_get_code),
             ],
             POSTER_IMG: [
                 MessageHandler(filters.PHOTO | filters.Document.IMAGE, poster_get_img),
-                CallbackQueryHandler(poster_select_cat,      pattern="^poster_cat_"),
+                CallbackQueryHandler(poster_select_cat, pattern="^poster_cat_"),
             ],
         },
         fallbacks=[
