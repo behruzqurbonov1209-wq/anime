@@ -1416,7 +1416,9 @@ def run_web_server():
     import urllib.request
 
     PORT      = int(os.getenv("PORT", 8080))
-    SITE_PASS = os.getenv("SITE_PASSWORD", "KoreanVibe")
+    SITE_PASS = os.getenv("SITE_PASSWORD")
+    if not SITE_PASS:
+        raise ValueError("SITE_PASSWORD environment variable is not set!")
     BOT_TKN   = os.getenv("BOT_TOKEN", "")
 
     sessions  = {}   # {token: expire_time}
@@ -1538,6 +1540,18 @@ def run_web_server():
                 for cat in ("anime","drama","kino"):
                     rows.extend(db.get_all_items(cat))
                 self.send_json(rows); return
+
+            if p.startswith("/api/episodes/"):
+                parts = p.strip("/").split("/")
+                if len(parts) == 4:
+                    _,_,cat,code = parts
+                    if cat in ("anime","drama","kino"):
+                        self.send_json(db.get_episodes(cat, code.upper()))
+                    else:
+                        self.send_json([])
+                else:
+                    self.send_json([])
+                return
 
             if p.startswith("/api/poster/"):
                 file_id = p[12:].strip()
