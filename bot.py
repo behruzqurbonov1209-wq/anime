@@ -264,16 +264,12 @@ async def admin_poster_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     keyboard = [
-        [
-            InlineKeyboardButton("🎌 Anime", callback_data="poster_cat_anime"),
-            InlineKeyboardButton("🎭 Drama", callback_data="poster_cat_drama"),
-            InlineKeyboardButton("🎬 Kino",  callback_data="poster_cat_kino"),
-        ],
-        [InlineKeyboardButton("🔙 Admin Panel", callback_data="admin_panel")]
+        [InlineKeyboardButton("➕ Poster qo'shish",   callback_data="poster_action_add")],
+        [InlineKeyboardButton("🔄 Poster almashtirish", callback_data="poster_action_change")],
+        [InlineKeyboardButton("🔙 Admin Panel",        callback_data="admin_panel")],
     ]
     await query.edit_message_text(
-        "🖼 <b>Poster qo'shish / almashtirish</b>\n\n"
-        "Kategoriya tanlang:",
+        "🖼 <b>Poster boshqaruvi</b>\n\nNima qilmoqchisiz?",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
@@ -286,33 +282,78 @@ async def poster_select_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["poster_cat"]      = cat
     context.user_data["waiting_poster_code"] = True
 
+    action   = context.user_data.get("poster_action", "add")
     items    = db.get_all_items(cat)
     cat_name = CATEGORY_NAMES.get(cat, cat)
 
     if not items:
-        await query.edit_message_text(f"{cat_name} bo'sh.")
+        keyboard = [[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_poster")]]
+        await query.edit_message_text(
+            f"{cat_name} bo'sh.",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
         return ConversationHandler.END
 
-    # Har bir serial uchun tugma — poster bor/yo'qligini ko'rsatadi
-    keyboard = []
-    for item in items:
-        has = "🖼 " if item.get("poster") else "📄 "
-        keyboard.append([InlineKeyboardButton(
-            f"{has}{item['code']} — {item['title']}",
-            callback_data=f"poster_pick_{item['code']}"
-        )])
-    keyboard.append([InlineKeyboardButton("🔙 Orqaga", callback_data="admin_poster")])
+    keyboard = [[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_poster")]]
 
+    if action == "add":
+        # Faqat postersiz seriallar
+        no_poster = [i for i in items if not i.get("poster")]
+        if not no_poster:
+            await query.edit_message_text(
+                f"✅ {cat_name} dagi barcha seriallarning posteri bor!",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML"
+            )
+            return ConversationHandler.END
+        await query.edit_message_text(
+            f"➕ <b>{cat_name}</b> — poster qo'shish\n\n"
+            f"Serial kodini yuboring:\n"
+            f"<i>Postersizlar: {', '.join(i['code'] for i in no_poster[:10])}</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    else:
+        # Almashtirish — faqat posterli seriallar
+        with_poster = [i for i in items if i.get("poster")]
+        if not with_poster:
+            await query.edit_message_text(
+                f"❌ {cat_name} da hozircha poster qo'shilmagan!",
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML"
+            )
+            return ConversationHandler.END
+        await query.edit_message_text(
+            f"🔄 <b>{cat_name}</b> — poster almashtirish\n\n"
+            f"Serial kodini yuboring:\n"
+            f"<i>Posterlilar: {', '.join(i['code'] for i in with_poster[:10])}</i>",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    return POSTER_CODE
+
+
+async def poster_action_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    action = query.data.replace("poster_action_", "")
+    context.user_data["poster_action"] = action
+
+    label = "➕ Poster qo'shish" if action == "add" else "🔄 Poster almashtirish"
+    keyboard = [
+        [
+            InlineKeyboardButton("🎌 Anime", callback_data="poster_cat_anime"),
+            InlineKeyboardButton("🎭 Drama", callback_data="poster_cat_drama"),
+            InlineKeyboardButton("🎬 Kino",  callback_data="poster_cat_kino"),
+        ],
+        [InlineKeyboardButton("🔙 Orqaga", callback_data="admin_poster")]
+    ]
     await query.edit_message_text(
-        f"🖼 <b>{cat_name}</b> — poster tanlang:\n\n"
-        f"🖼 = poster bor | 📄 = poster yo'q",
+        f"{label}\n\nKategoriya tanlang:",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
     return POSTER_CODE
-
-
-async def poster_pick_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Tugmadan serial tanlanganda rasm so'rash"""
     query = update.callback_query
     await query.answer()
@@ -351,10 +392,11 @@ async def poster_pick_callback(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def poster_get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data.pop("waiting_poster_code", None)
-    code = update.message.text.strip().upper()
-    cat  = context.user_data.get("poster_cat")
-    item = db.get_item(cat, code)
+    code   = update.message.text.strip().upper()
+    action = context.user_data.get("poster_action", "add")
+    cat    = context.user_data.get("poster_cat")
 
+    item = db.get_item(cat, code) if cat else None
     if not item:
         await update.message.reply_text(
             f"❌ <code>{code}</code> topilmadi. Qaytadan yozing:",
@@ -362,15 +404,29 @@ async def poster_get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return POSTER_CODE
 
-    context.user_data["poster_code"] = code
+    # Almashtirish rejimida poster yo'q bo'lsa ogohlantirish
+    if action == "change" and not item.get("poster"):
+        await update.message.reply_text(
+            f"⚠️ <b>{item['title']}</b> da poster yo'q.\n"
+            f"Baribir rasm yuboring — qo'shiladi:",
+            parse_mode="HTML"
+        )
+    # Qo'shish rejimida poster allaqachon bor bo'lsa ogohlantirish
+    elif action == "add" and item.get("poster"):
+        await update.message.reply_text(
+            f"⚠️ <b>{item['title']}</b> da poster allaqachon bor.\n"
+            f"Yangi rasm yuborsangiz — almashinadi:",
+            parse_mode="HTML"
+        )
+
+    context.user_data["poster_code"]     = code
     context.user_data["waiting_poster_img"] = True
 
-    has_poster = "✅ Hozir poster bor" if item.get("poster") else "❌ Hozir poster yo'q"
-    keyboard = [[InlineKeyboardButton("🔙 Bekor", callback_data="admin_panel")]]
+    has_poster = "✅ Poster bor" if item.get("poster") else "❌ Poster yo'q"
+    keyboard   = [[InlineKeyboardButton("🔙 Bekor", callback_data="admin_poster")]]
     await update.message.reply_text(
-        f"🖼 <b>{item['title']}</b> uchun poster yuboring:\n\n"
-        f"{has_poster}\n\n"
-        f"Yangi rasm yuboring (foto sifatida):",
+        f"🖼 <b>{item['title']}</b> — {has_poster}\n\n"
+        f"Rasm yuboring (foto sifatida):",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
@@ -1892,17 +1948,19 @@ def main():
         entry_points=[CallbackQueryHandler(admin_poster_start, pattern="^admin_poster$")],
         states={
             POSTER_CODE: [
+                CallbackQueryHandler(poster_action_callback, pattern="^poster_action_"),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, poster_get_code),
-                CallbackQueryHandler(poster_pick_callback, pattern="^poster_pick_"),
+                CallbackQueryHandler(poster_pick_callback,   pattern="^poster_pick_"),
+                CallbackQueryHandler(poster_select_cat,      pattern="^poster_cat_"),
             ],
             POSTER_IMG: [
                 MessageHandler(filters.PHOTO | filters.Document.IMAGE, poster_get_img),
-                CallbackQueryHandler(poster_select_cat, pattern="^poster_cat_"),
+                CallbackQueryHandler(poster_select_cat,      pattern="^poster_cat_"),
             ],
         },
         fallbacks=[
             CommandHandler("cancel", conv_cancel),
-            CallbackQueryHandler(admin_panel,       pattern="^admin_panel$"),
+            CallbackQueryHandler(admin_panel,        pattern="^admin_panel$"),
             CallbackQueryHandler(admin_poster_start, pattern="^admin_poster$"),
         ],
         per_user=True,
