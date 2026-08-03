@@ -42,6 +42,45 @@ CATEGORY_NAMES = {
     "kino":  "🎬 Kino"
 }
 
+# ── PREMIUM EMOJI HELPER ───────────────────────────────────────────────
+# Telegram custom (premium) emoji HTML tegi:
+# <tg-emoji emoji-id="EMOJI_ID">fallback_char</tg-emoji>
+# parse_mode="HTML" bilan ishlaydi.
+# Keyboard tugma label da ISHLAMAYDI — faqat xabar matni/caption da ishlaydi.
+#
+# Quyidagi ID-lar mashhur premium emojilar:
+#   5188536808791099888  → ✨ (yulduzcha — premium)
+#   5368324170671202286  → 🔥 (olov)
+#   5373026167722876724  → 🎬 (kino kamera)
+#   5373141891321015026  → 🎌 (anime bayroq)
+#   5471952986970267163  → ⭐ (yulduz)
+#   5440539497383087970  → 💫 (uchuvchi yulduz)
+#   5386367538735104399  → 🎭 (drama)
+#   5467655833969463271  → 📺 (televizor)
+#   5472308687519217609  → 🔔 (qo'ng'iroq)
+#   5368324170671202286  → 🔥 (olov)
+#
+# O'zingizning premium emoji ID-laringizni @ShowJsonBot orqali toping:
+#   1. Kanalga/guruhga premium emoji yuboring
+#   2. @ShowJsonBot ga forward qiling — custom_emoji_id ko'rinadi
+
+def pe(emoji_id: str, fallback: str) -> str:
+    """
+    Premium emoji HTML tegi qaytaradi.
+    parse_mode='HTML' bo'lgan xabarlarda ishlaydi.
+    """
+    return f'<tg-emoji emoji-id="{emoji_id}">{fallback}</tg-emoji>'
+
+
+# Asosiy premium emoji-lar (ID-larni o'zingizning premium emojilarga almashtiring)
+PE_ANIME  = pe("5373141891321015026", "🎌")   # Anime uchun
+PE_DRAMA  = pe("5386367538735104399", "🎭")   # Drama uchun
+PE_KINO   = pe("5373026167722876724", "🎬")   # Kino uchun
+PE_STAR   = pe("5188536808791099888", "✨")   # Bezak
+PE_FIRE   = pe("5368324170671202286", "🔥")   # Bezak
+PE_TV     = pe("5467655833969463271", "📺")   # Qism
+PE_BELL   = pe("5472308687519217609", "🔔")   # Kanal
+
 def is_admin(user_id: int) -> bool:
     """Super admin (.env) yoki DB dagi istalgan admin"""
     return user_id in ADMIN_IDS or db.is_admin(user_id)
@@ -186,7 +225,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 text = (
                     f"{cat_name} | <b>{item['title']}</b>"
                     f"{desc_text}"
-                    f"\n📺 Jami: <b>{len(episodes)} qism</b>\n"
+                    f"\n{PE_TV} Jami: <b>{len(episodes)} qism</b>\n"
                     "Qismni tanlang:"
                 )
                 if item.get("poster"):
@@ -218,11 +257,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard.append([InlineKeyboardButton("⚙️ Admin Panel", callback_data="admin_panel")])
 
     text = (
-        f"Salom, {user.first_name}! 👋\n\n"
+        f"{PE_STAR} Salom, <b>{user.first_name}</b>! {PE_STAR}\n\n"
         "Kategoriya tanlang:\n\n"
-        "🎌 <b>Anime</b> — Anime seriyalar\n"
-        "🎭 <b>Drama</b> — Drama seriyalar\n"
-        "🎬 <b>Kino</b> — Tarjima kinolar"
+        f"{PE_ANIME} <b>Anime</b> — Anime seriyalar\n"
+        f"{PE_DRAMA} <b>Drama</b> — Drama seriyalar\n"
+        f"{PE_KINO} <b>Kino</b> — Tarjima kinolar"
     )
     if update.message:
         await update.message.reply_text(text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="HTML")
@@ -579,7 +618,7 @@ async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         f"{cat_name} | <b>{found['title']}</b>"
         f"{desc_text}"
-        f"\n📺 Jami: <b>{len(episodes)} qism</b>\n"
+        f"\n{PE_TV} Jami: <b>{len(episodes)} qism</b>\n"
         f"Qismni tanlang:"
     )
 
@@ -620,7 +659,7 @@ async def send_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ep_label = episode.get("title") or f"{episode_num}-qism"
     caption = (
         f"{cat_name} | <b>{item['title']}</b>\n"
-        f"📺 <b>{ep_label}</b>"
+        f"{PE_TV} <b>{ep_label}</b>"
     )
 
     file_id   = episode["file_id"]
@@ -1107,9 +1146,10 @@ async def admin_broadcast_start(update: Update, context: ContextTypes.DEFAULT_TY
     stats = db.get_stats()
     keyboard = [[InlineKeyboardButton("🔙 Admin Panel", callback_data="admin_panel")]]
     await query.edit_message_text(
-        f"📢 <b>Broadcast</b>\n\n"
+        f"{PE_BELL} <b>Broadcast</b>\n\n"
         f"👥 {stats['users']} ta foydalanuvchiga yuboriladi\n\n"
-        "Xabar yozing yoki fayl yuboring.\n"
+        "Xabar yozing yoki fayl/rasm/video yuboring.\n"
+        f"{PE_STAR} <i>Premium emoji, caption entities — hammasi saqlanadi</i>\n\n"
         "<i>Bekor: /cancel yoki ↙️ Admin Panel</i>",
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
@@ -1118,55 +1158,48 @@ async def admin_broadcast_start(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def do_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    users  = db.get_all_users()
-    sent   = 0
-    failed = 0
-    status = await update.message.reply_text(f"📤 Yuborilmoqda... 0/{len(users)}")
+    """
+    Broadcast: copy_message orqali yuboriladi.
+    Admin qanday yuborsa — premium emoji, entities, caption, sticker, voice,
+    animation, video_note — HAMMASI aynan saqlanadi.
+    parse_mode="HTML" ishlatilmaydi — entities Telegram tomonidan saqlanadi.
+    """
+    users    = db.get_all_users()
+    sent     = 0
+    failed   = 0
+    src_chat = update.message.chat_id
+    msg_id   = update.message.message_id
+    status   = await update.message.reply_text(f"📤 Yuborilmoqda... 0/{len(users)}")
 
     for i, user in enumerate(users):
+        uid = user["user_id"]
         try:
-            uid = user["user_id"]
-            if update.message.text:
-                await context.bot.send_message(
-                    uid, update.message.text, parse_mode="HTML"
-                )
-            elif update.message.photo:
-                await context.bot.send_photo(
-                    uid, update.message.photo[-1].file_id,
-                    caption=update.message.caption or "",
-                    parse_mode="HTML"
-                )
-            elif update.message.video:
-                await context.bot.send_video(
-                    uid, update.message.video.file_id,
-                    caption=update.message.caption or "",
-                    parse_mode="HTML"
-                )
-            elif update.message.document:
-                await context.bot.send_document(
-                    uid, update.message.document.file_id,
-                    caption=update.message.caption or "",
-                    parse_mode="HTML"
-                )
+            await context.bot.copy_message(
+                chat_id=uid,
+                from_chat_id=src_chat,
+                message_id=msg_id,
+            )
             sent += 1
         except Exception as e:
             err = str(e).lower()
             if "flood" in err or "too many" in err:
-                # Flood limit — 30 soniya kutamiz
-                import asyncio
                 await asyncio.sleep(30)
                 try:
-                    uid = user["user_id"]
-                    await context.bot.send_message(uid, update.message.text or "", parse_mode="HTML")
+                    await context.bot.copy_message(
+                        chat_id=uid,
+                        from_chat_id=src_chat,
+                        message_id=msg_id,
+                    )
                     sent += 1
                 except Exception:
                     failed += 1
+            elif "blocked" in err or "not found" in err or "deactivated" in err or "kicked" in err:
+                failed += 1
             else:
                 failed += 1
 
-        # Har 25 xabardan keyin 1 soniya kutamiz — flood limitdan saqlanish
+        # Har 25 xabardan keyin 1 soniya — flood limitdan saqlanish
         if (i + 1) % 25 == 0:
-            import asyncio
             await asyncio.sleep(1)
 
         if (i + 1) % 10 == 0:
