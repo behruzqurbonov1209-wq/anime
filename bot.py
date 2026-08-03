@@ -73,7 +73,7 @@ def pe(emoji_id: str, fallback: str) -> str:
 
 
 # Asosiy premium emoji-lar (ID-larni o'zingizning premium emojilarga almashtiring)
-PE_ANIME  = pe("5373141891321015026", "🎌")   # Anime uchun
+PE_ANIME  = pe("5362097550423762417", "🎌")   # Anime uchun
 PE_DRAMA  = pe("5386367538735104399", "🎭")   # Drama uchun
 PE_KINO   = pe("5373026167722876724", "🎬")   # Kino uchun
 PE_STAR   = pe("5188536808791099888", "✨")   # Bezak
