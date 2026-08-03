@@ -36,21 +36,23 @@ ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS", "").split(",") if x.strip()]
     POSTER_CODE, POSTER_IMG,
 ) = range(18)
 
+CATEGORY_NAMES = {
+    "anime": "🎌 Anime",
+    "drama": "🎭 Drama",
+    "kino":  "🎬 Kino"
+}
+
 # ── EMOJI KONSTANTALAR ─────────────────────────────────────────────────
-# Custom emoji (HTML formatida tg-emoji tegi ishlatiladi)
-PE_ANIME  = '<tg-emoji emoji-id="5362097550423762417">🤒</tg-emoji>'
+# Oddiy Unicode emoji — hamma uchun ishlaydi, premium talab etmaydi.
+# Premium emoji (tg-emoji) uchun Telegram botga maxsus ruxsat kerak
+# va faqat premium foydalanuvchilarda ko'rinadi.
+PE_ANIME  = "🎌"
 PE_DRAMA  = "🎭"
 PE_KINO   = "🎬"
 PE_STAR   = "✨"
 PE_FIRE   = "🔥"
 PE_TV     = "📺"
 PE_BELL   = "🔔"
-
-CATEGORY_NAMES = {
-    "anime": f"{PE_ANIME} Anime",
-    "drama": "🎭 Drama",
-    "kino":  "🎬 Kino"
-}
 
 def is_admin(user_id: int) -> bool:
     """Super admin (.env) yoki DB dagi istalgan admin"""
@@ -87,9 +89,11 @@ async def check_subscription(bot, user_id: int) -> tuple[bool, list]:
                 not_subbed.append(ch)
         except Exception as e:
             err = str(e).lower()
+            # Bot kanalga kirish huquqi yo'q bo'lsa — tekshirmasdan o'tkazib yuboramiz
             if "not enough rights" in err or "bot is not a member" in err or "chat not found" in err:
                 logger.warning(f"Kanal {ch['chat_id']} tekshirib bo'lmadi: {e}")
                 continue
+            # Boshqa xatolikda — obuna bo'lmagan deb hisoblaymiz
             not_subbed.append(ch)
 
     return len(not_subbed) == 0, not_subbed
@@ -104,6 +108,7 @@ async def subscription_wall(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         if username:
             url = f"https://t.me/{username.lstrip('@')}"
         else:
+            # Shaxsiy guruh uchun invite link
             url = f"https://t.me/c/{str(ch['chat_id']).replace('-100', '')}"
         keyboard.append([InlineKeyboardButton(f"📢 {label}", url=url)])
 
@@ -132,12 +137,14 @@ async def check_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer("Tekshirilmoqda...", show_alert=False)
     ok, not_subbed = await check_subscription(context.bot, query.from_user.id)
     if ok:
+        # Obuna bo'lgan — start menyusiga o'tamiz
         try:
             await query.delete_message()
         except Exception:
             pass
         await start(update, context)
     else:
+        # Hali obuna bo'lmagan — yangi xabar yuboramiz (edit emas)
         try:
             await query.delete_message()
         except Exception:
@@ -155,18 +162,22 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     db.add_user(user.id, user.username or "", user.full_name or "")
 
+    # Obuna tekshiruvi
     if not is_admin(user.id):
         ok, not_subbed = await check_subscription(context.bot, user.id)
         if not ok:
             await subscription_wall(update, context, not_subbed)
             return
 
+    # Saytdan ?start=KOD bilan kelgan bo'lsa — to'g'ri shu serialni yuboramiz
     if context.args:
         code = context.args[0].upper()
+        # Qaysi kategoriyada ekanligini topamiz
         for cat in ("anime", "drama", "kino"):
             item = db.get_item(cat, code)
             if item:
                 context.user_data["category"] = cat
+                # handle_code ga o'xshash ishlov
                 episodes = db.get_episodes(cat, code)
                 cat_name = CATEGORY_NAMES.get(cat, cat)
                 ep_buttons = []
@@ -204,11 +215,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode="HTML"
                     )
                 return
+        # Kod topilmadi — oddiy start
         await update.message.reply_text(f"❌ <b>{code}</b> topilmadi.", parse_mode="HTML")
         return
 
-    # InlineKeyboardButton matnlariga HTML teglar to'g'ridan-to'g'ri o'tmaydi (faqat oddiy emoji),
-    # shuning uchun tugmada oddiy emoji qoldirildi, matnda esa Custom Emoji ishlatiladi.
     keyboard = [
         [
             InlineKeyboardButton("🎌 Anime",  callback_data="cat_anime"),
@@ -299,14 +309,14 @@ async def poster_select_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         keyboard = [[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_poster")]]
         await query.edit_message_text(
             f"{cat_name} bo'sh.",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
+            reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return ConversationHandler.END
 
     keyboard = [[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_poster")]]
 
     if action == "add":
+        # Faqat postersiz seriallar
         no_poster = [i for i in items if not i.get("poster")]
         if not no_poster:
             await query.edit_message_text(
@@ -323,10 +333,11 @@ async def poster_select_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="HTML"
         )
     else:
+        # Almashtirish — faqat posterli seriallar
         with_poster = [i for i in items if i.get("poster")]
         if not with_poster:
             await query.edit_message_text(
-                f"🔄 <b>{cat_name}</b> da hozircha poster qo'shilmagan!",
+                f"❌ {cat_name} da hozircha poster qo'shilmagan!",
                 reply_markup=InlineKeyboardMarkup(keyboard),
                 parse_mode="HTML"
             )
@@ -369,6 +380,40 @@ async def poster_action_callback(update: Update, context: ContextTypes.DEFAULT_T
             parse_mode="HTML"
         )
     return POSTER_CODE
+    """Tugmadan serial tanlanganda rasm so'rash"""
+    query = update.callback_query
+    await query.answer()
+    code = query.data.replace("poster_pick_", "").upper()
+    cat  = context.user_data.get("poster_cat")
+    item = db.get_item(cat, code)
+
+    if not item:
+        await query.answer("Topilmadi!", show_alert=True)
+        return
+
+    context.user_data["poster_code"]     = code
+    context.user_data["waiting_poster_img"] = True
+
+    has_poster = "✅ Poster bor — almashtirish uchun yuborish" if item.get("poster") else "❌ Poster yo'q — qo'shish uchun yuborish"
+    keyboard = [[InlineKeyboardButton("🔙 Orqaga", callback_data=f"poster_cat_{cat}")]]
+
+    if item.get("poster"):
+        await query.edit_message_text(
+            f"🖼 <b>{item['title']}</b>\n\n"
+            f"{has_poster}\n\n"
+            f"Yangi rasm yuboring:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    else:
+        await query.edit_message_text(
+            f"🖼 <b>{item['title']}</b>\n\n"
+            f"{has_poster}\n\n"
+            f"Rasm yuboring:",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="HTML"
+        )
+    return POSTER_IMG
 
 
 async def poster_get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -385,12 +430,14 @@ async def poster_get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return POSTER_CODE
 
+    # Almashtirish rejimida poster yo'q bo'lsa ogohlantirish
     if action == "change" and not item.get("poster"):
         await update.message.reply_text(
             f"⚠️ <b>{item['title']}</b> da poster yo'q.\n"
             f"Baribir rasm yuboring — qo'shiladi:",
             parse_mode="HTML"
         )
+    # Qo'shish rejimida poster allaqachon bor bo'lsa ogohlantirish
     elif action == "add" and item.get("poster"):
         await update.message.reply_text(
             f"⚠️ <b>{item['title']}</b> da poster allaqachon bor.\n"
@@ -449,24 +496,30 @@ async def poster_get_img(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Foydalanuvchi kod yozganda — qismlar tugmalarini ko'rsatadi"""
+    # Faqat shaxsiy chatda ishlaydi
     if update.effective_chat.type != "private":
         return
 
     user = update.effective_user
     db.add_user(user.id, user.username or "", user.full_name or "")
 
+    # Admin kanal kutayotgan bo'lsa
     if is_admin(user.id) and context.user_data.get("waiting_channel"):
         return await ch_add_get_id(update, context)
 
+    # Admin qism kodi kutayotgan bo'lsa
     if is_admin(user.id) and context.user_data.get("waiting_ep_code"):
         return await addep_get_code(update, context)
 
+    # Admin poster kodi kutayotgan bo'lsa
     if is_admin(user.id) and context.user_data.get("waiting_poster_code"):
         return await poster_get_code(update, context)
 
+    # Admin yangi admin ID kutayotgan bo'lsa
     if is_admin(user.id) and context.user_data.get("waiting_new_admin"):
         return await adm_add_get_id(update, context)
 
+    # Obuna tekshiruvi
     if not is_admin(user.id):
         ok, not_subbed = await check_subscription(context.bot, user.id)
         if not ok:
@@ -475,6 +528,7 @@ async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     code = update.message.text.strip().upper()
 
+    # Kategoriyadan qidirish
     category = context.user_data.get("category")
     found = None
     found_cat = None
@@ -517,6 +571,7 @@ async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(text, parse_mode="HTML")
         return
 
+    # Qismlar tugmalari — 3 tadan qator
     ep_buttons = []
     row = []
     for ep in episodes:
@@ -531,6 +586,7 @@ async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         ep_buttons.append(row)
     ep_buttons.append([InlineKeyboardButton("🔙 Orqaga", callback_data=f"cat_{found_cat}")])
 
+    # Chiroyli xabar matni
     desc_text = f"\n📝 {found['description']}\n" if found.get("description") else "\n"
     text = (
         f"{cat_name} | <b>{found['title']}</b>"
@@ -559,7 +615,9 @@ async def send_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
+    # callback: ep_anime_A001_3
     parts = query.data.split("_", 3)
+    # parts = ["ep", category, code, episode_num]
     _, category, code, ep_num_str = parts
     episode_num = int(ep_num_str)
 
@@ -609,7 +667,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = (
         "⚙️ <b>Admin Panel</b>\n\n"
         f"👥 Foydalanuvchilar: <b>{stats['users']}</b>\n"
-        f"{PE_ANIME} Anime: <b>{stats['anime']}</b> ta serial\n"
+        f"🎌 Anime: <b>{stats['anime']}</b> ta serial\n"
         f"🎭 Drama: <b>{stats['drama']}</b> ta serial\n"
         f"🎬 Kino: <b>{stats['kino']}</b> ta\n"
         f"📺 Jami qismlar: <b>{stats.get('episodes', 0)}</b> ta\n"
@@ -631,6 +689,7 @@ async def admin_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("🔔 Kanallar",      callback_data="admin_channels"),
         ],
     ]
+    # Faqat super admin adminlarni boshqara oladi
     if is_super_admin(update.effective_user.id):
         keyboard.append([InlineKeyboardButton("👥 Adminlar",  callback_data="admin_admins")])
     keyboard.append([InlineKeyboardButton("🔙 Orqaga",        callback_data="back_main")])
@@ -649,7 +708,7 @@ async def admin_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "📊 <b>Statistika</b>\n\n"
         f"👥 Foydalanuvchilar: <b>{stats['users']}</b>\n\n"
         f"📦 Kontent:\n"
-        f"  {PE_ANIME} Anime: {stats['anime']} serial\n"
+        f"  🎌 Anime: {stats['anime']} serial\n"
         f"  🎭 Drama: {stats['drama']} serial\n"
         f"  🎬 Kino: {stats['kino']} ta\n"
         f"  📺 Jami qismlar: {stats.get('episodes', 0)} ta\n\n"
@@ -799,13 +858,13 @@ async def addep_select_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     cat = query.data.replace("addep_", "")
     context.user_data["ep_cat"]          = cat
-    context.user_data["waiting_ep_code"] = True
+    context.user_data["waiting_ep_code"] = True  # handle_code ushlab olmasin
 
     items = db.get_all_items(cat)
     cat_name = CATEGORY_NAMES.get(cat, cat)
 
     if not items:
-        await query.edit_message_text(f"{cat_name} bo'sh. Avval serial qo'shing.", parse_mode="HTML")
+        await query.edit_message_text(f"{cat_name} bo'sh. Avval serial qo'shing.")
         return ConversationHandler.END
 
     lines = [f"📺 {cat_name} — qism qo'shish\n\nSeriallar:\n"]
@@ -845,11 +904,16 @@ async def addep_get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def addep_get_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Admin video/hujjat yuborganda — bitta ham, ko'p ham — avtomatik ketma-ket qism qilib saqlaydi.
+    Telegram media_group_id orqali bir vaqtda yuborilgan fayllarni aniqlaydi.
+    """
     cat  = context.user_data.get("ep_cat")
     code = context.user_data.get("ep_code")
     if not cat or not code:
         return ADDEP_FILE
 
+    # Fayl turini aniqlash
     if update.message.video:
         file_id   = update.message.video.file_id
         file_type = "video"
@@ -863,15 +927,18 @@ async def addep_get_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Video, hujjat yoki rasm yuboring.")
         return ADDEP_FILE
 
+    # Ko'p fayl bir vaqtda yuborilganmi? (media group)
     media_group_id = update.message.media_group_id
 
     if media_group_id:
+        # Media group — fayllarni vaqtinchalik buferga yig'amiz
         buf_key = f"mg_{media_group_id}"
         if buf_key not in context.user_data:
             context.user_data[buf_key] = []
+            # Barcha fayllar kelganidan keyin saqlash uchun job qo'shamiz
             context.job_queue.run_once(
                 _flush_media_group,
-                when=2.5,
+                when=2.5,          # 2.5 soniya kutamiz (hammasi kelsin)
                 name=buf_key,
                 data={
                     "cat": cat, "code": code,
@@ -880,8 +947,9 @@ async def addep_get_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 }
             )
         context.user_data[buf_key].append((file_id, file_type))
-        return ADDEP_FILE
+        return ADDEP_FILE  # hali job ishlaguncha state da qolamiz
 
+    # Bitta fayl — atomic saqlash (race condition yo'q)
     next_num = db.add_episode_auto(cat, code, file_id, file_type)
     item     = db.get_item(cat, code)
     cat_name = CATEGORY_NAMES.get(cat, cat)
@@ -900,10 +968,12 @@ async def addep_get_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
+    # State da qolamiz — admin davom ettirishni tanlaydi
     return ADDEP_FILE
 
 
 async def _flush_media_group(context: ContextTypes.DEFAULT_TYPE):
+    """Job: media group to'liq kelgandan keyin barcha qismlarni ketma-ket saqlaydi"""
     job  = context.job
     data = job.data
     cat      = data["cat"]
@@ -915,11 +985,13 @@ async def _flush_media_group(context: ContextTypes.DEFAULT_TYPE):
     if not files:
         return
 
+    # Ketma-ket qism raqami bilan saqlash
     saved = []
     for file_id, file_type in files:
         num = db.add_episode_auto(cat, code, file_id, file_type)
         saved.append(num)
 
+    # Buferni tozalash
     context.user_data.pop(buf_key, None)
 
     item     = db.get_item(cat, code)
@@ -947,8 +1019,10 @@ async def _flush_media_group(context: ContextTypes.DEFAULT_TYPE):
 
 
 async def continue_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """'Keyingi qism qo'sh' tugmasi"""
     query = update.callback_query
     await query.answer()
+    # cont_ep_anime_A001
     parts = query.data.split("_", 3)
     cat  = parts[2]
     code = parts[3]
@@ -999,7 +1073,7 @@ async def delete_select_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cat_name = CATEGORY_NAMES.get(cat, cat)
 
     if not items:
-        await query.edit_message_text(f"{cat_name} bo'sh.", parse_mode="HTML")
+        await query.edit_message_text(f"{cat_name} bo'sh.")
         return ConversationHandler.END
 
     lines = [f"🗑 {cat_name}\n\nKodlar:\n"]
@@ -1037,6 +1111,7 @@ async def admin_broadcast_start(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     uid = query.from_user.id
+    # Faqat super admin yoki manager broadcast yuborishi mumkin
     if not (is_super_admin(uid) or db.get_admin_role(uid) == "manager"):
         await query.answer("❌ Broadcast huquqi yo'q!", show_alert=True)
         return
@@ -1056,6 +1131,12 @@ async def admin_broadcast_start(update: Update, context: ContextTypes.DEFAULT_TY
 
 
 async def do_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Broadcast: copy_message orqali yuboriladi.
+    Admin qanday yuborsa — premium emoji, entities, caption, sticker, voice,
+    animation, video_note — HAMMASI aynan saqlanadi.
+    parse_mode="HTML" ishlatilmaydi — entities Telegram tomonidan saqlanadi.
+    """
     users    = db.get_all_users()
     sent     = 0
     failed   = 0
@@ -1090,6 +1171,7 @@ async def do_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 failed += 1
 
+        # Har 25 xabardan keyin 1 soniya — flood limitdan saqlanish
         if (i + 1) % 25 == 0:
             await asyncio.sleep(1)
 
@@ -1125,6 +1207,7 @@ async def conv_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ══════════════════════════════════════════════════════════
 
 async def user_to_admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/admin <xabar> — adminga xabar yuborish"""
     user = update.effective_user
 
     if not context.args:
@@ -1169,6 +1252,7 @@ async def user_to_admin_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ══════════════════════════════════════════════════════════
 
 async def admin_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Admin paneldagi kanallar menyusi"""
     query = update.callback_query
     await query.answer()
     if not is_admin(query.from_user.id):
@@ -1197,6 +1281,7 @@ async def admin_channels(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def admin_admins(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Adminlar ro'yxati va boshqaruvi"""
     query = update.callback_query
     await query.answer()
     if not is_super_admin(query.from_user.id):
@@ -1270,6 +1355,7 @@ async def adm_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
+    # Rol tanlash
     context.user_data["new_admin_id"] = new_id
     role_keyboard = [
         [InlineKeyboardButton("📝 Kontent admin", callback_data=f"adm_role_content_{new_id}")],
@@ -1291,14 +1377,15 @@ async def adm_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def adm_role_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Rol tanlanganda"""
     query = update.callback_query
     await query.answer()
     if not can_manage_admins(query.from_user.id):
         await query.answer("❌ Ruxsat yo'q!", show_alert=True)
         return
 
-    parts   = query.data.split("_")
-    role    = parts[2]
+    parts   = query.data.split("_")  # adm_role_content_12345
+    role    = parts[2]               # content yoki manager
     new_id  = int(parts[3])
 
     all_users = db.get_all_users()
@@ -1341,7 +1428,7 @@ async def adm_del_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     if not can_manage_admins(query.from_user.id):
-        await query.answer("❌ Sizda bu huquq yo'q!", show_alert=True)
+        await query.answer("❌ Ruxsat yo'q!", show_alert=True)
         return
 
     admins = db.get_admins()
@@ -1404,6 +1491,7 @@ async def ch_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ch_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
 
+    # Forward qilingan xabar orqali ID olish (yangi PTB: forward_origin)
     origin = getattr(msg, "forward_origin", None)
     logger.info(f"ch_add_get_id: origin={origin}, msg_type={type(msg)}, text={msg.text}")
     forward_chat = None
@@ -1430,6 +1518,7 @@ async def ch_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
 
+    # Matn orqali — @username yoki ID
     text = msg.text.strip() if msg.text else ""
     if not text:
         await msg.reply_text("❌ Matn yuboring yoki kanaldan xabar forward qiling.")
@@ -1455,6 +1544,8 @@ async def ch_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
     except Exception as e:
+        # get_chat ishlamasa ham ID to'g'ri formatda bo'lsa — saqlab qo'yamiz
+        # Telegram kanal ID formati: -100XXXXXXXXXX
         import re
         clean = text.strip()
         if re.match(r'^-100\d{8,12}$', clean):
@@ -1529,8 +1620,8 @@ def run_web_server():
         raise ValueError("SITE_PASSWORD environment variable is not set!")
     BOT_TKN   = os.getenv("BOT_TOKEN", "")
 
-    sessions  = {}
-    fail_log  = {}
+    sessions  = {}   # {token: expire_time}
+    fail_log  = {}   # {ip: [timestamps]}
     RATE_LIMIT  = 5
     BLOCK_TIME  = 900
     SESSION_TTL = 3600 * 8
@@ -1659,6 +1750,7 @@ def run_web_server():
 
             if p == "/api/stats":
                 stats = db.get_stats()
+                # Foydalanuvchi sonini ommaviy ko'rsatmaymiz
                 safe = {k: v for k, v in stats.items() if k != "users"}
                 self.send_json(safe); return
 
@@ -1683,6 +1775,7 @@ def run_web_server():
             if p.startswith("/api/poster/"):
                 import re
                 file_id = p[12:].strip()
+                # Telegram file_id — faqat harf, raqam, _ va - dan iborat
                 if not file_id or not re.match(r'^[A-Za-z0-9_\-]{10,200}$', file_id):
                     self.send_response(400); self.end_headers(); return
                 try:
@@ -1710,6 +1803,7 @@ def run_web_server():
                     self.send_response(502); self.end_headers()
                 return
 
+            # Himoyalangan
             if not self.authed():
                 self.send_401(); return
 
@@ -1824,6 +1918,7 @@ def run_web_server():
 def main():
     app = Application.builder().token(BOT_TOKEN).build()
 
+    # Serial qo'shish
     add_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_add_start, pattern="^admin_add$")],
         states={
@@ -1843,6 +1938,7 @@ def main():
         allow_reentry=True,
     )
 
+    # Qism qo'shish
     addep_conv = ConversationHandler(
         entry_points=[
             CallbackQueryHandler(admin_addep_start, pattern="^admin_addep$"),
@@ -1865,6 +1961,7 @@ def main():
         allow_reentry=True,
     )
 
+    # O'chirish
     del_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_delete_start, pattern="^admin_delete$")],
         states={
@@ -1879,6 +1976,7 @@ def main():
         allow_reentry=True,
     )
 
+    # Broadcast
     broadcast_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_broadcast_start, pattern="^admin_broadcast$")],
         states={
@@ -1895,6 +1993,7 @@ def main():
         allow_reentry=True,
     )
 
+    # Kanal qo'shish
     channel_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(ch_add_start, pattern="^ch_add$")],
         states={
@@ -1911,6 +2010,7 @@ def main():
         allow_reentry=True,
     )
 
+    # Admin qo'shish conversation
     admin_mgmt_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(adm_add_start, pattern="^adm_add$")],
         states={
@@ -1924,6 +2024,7 @@ def main():
         allow_reentry=True,
     )
 
+    # Poster qo'shish
     poster_conv = ConversationHandler(
         entry_points=[CallbackQueryHandler(admin_poster_start, pattern="^admin_poster$")],
         states={
@@ -1949,6 +2050,7 @@ def main():
     app.add_handler(CommandHandler("start", start))
     app.add_handler(CommandHandler("admin", user_to_admin_cmd))
 
+    # Conversation handlerlar — 0-guruhda, birinchi tekshiriladi
     app.add_handler(add_conv,        group=0)
     app.add_handler(addep_conv,      group=0)
     app.add_handler(del_conv,        group=0)
@@ -1957,6 +2059,7 @@ def main():
     app.add_handler(admin_mgmt_conv, group=0)
     app.add_handler(poster_conv,     group=0)
 
+    # Callback handlerlar — 1-guruhda
     app.add_handler(CallbackQueryHandler(show_category,      pattern="^cat_"),          group=1)
     app.add_handler(CallbackQueryHandler(back_main,          pattern="^back_main$"),    group=1)
     app.add_handler(CallbackQueryHandler(check_sub_callback, pattern="^check_sub$"),    group=1)
@@ -1973,10 +2076,12 @@ def main():
     app.add_handler(CallbackQueryHandler(adm_role_callback,  pattern="^adm_role_"),       group=1)
     app.add_handler(CallbackQueryHandler(send_episode,       pattern="^ep_"),           group=1)
 
+    # Matn handler — oxirida
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_code),       group=1)
 
     logger.info("Bot ishga tushdi...")
 
+    # Web server alohida thread da
     web_thread = threading.Thread(target=run_web_server, daemon=True)
     web_thread.start()
 
