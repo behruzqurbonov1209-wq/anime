@@ -357,15 +357,6 @@ tr:hover td { background: rgba(255,255,255,0.02); }
   <div class="content">
     <!-- New -->
     <div class="section" id="new-section">
-      <div class="section-header">
-        <div class="section-title">Yangi qo'shilganlar</div>
-      </div>
-      <div class="cat-tabs">
-        <button class="cat-tab active" onclick="filterCatTab('all',this)">Hammasi</button>
-        <button class="cat-tab" onclick="filterCatTab('anime',this)">Anime</button>
-        <button class="cat-tab" onclick="filterCatTab('drama',this)">Drama</button>
-        <button class="cat-tab" onclick="filterCatTab('kino',this)">Kino</button>
-      </div>
       <div class="cards-grid" id="cardsGrid">
         <div class="empty"><p>Yuklanmoqda...</p></div>
       </div>
@@ -624,7 +615,7 @@ function renderSlider(items) {
         <div class="hero-title">${esc(item.title)}</div>
         ${item.description ? `<div class="hero-desc">${esc(item.description)}</div>` : ''}
         <div class="hero-actions">
-          <button class="btn-watch" onclick="openBot('${esc(item.code)}')">
+          <button class="btn-watch" data-code="${esc(item.code)}" onclick="openBotFromBtn(this)">
             <svg width="16" height="16" fill="currentColor" viewBox="0 0 24 24"><polygon points="5 3 19 12 5 21 5 3"/></svg>
             Ko'rish
           </button>
@@ -678,7 +669,7 @@ function renderCards(items) {
       : `<div class="card-thumb-placeholder">${scat === 'anime' ? '★' : scat === 'drama' ? '▶' : '◆'}</div>`;
     const cardData = JSON.stringify(item).replace(/"/g,'&quot;');
     return `
-    <div class="card" onclick="openBot('${sc}')">
+    <div class="card" data-code="${sc}" onclick="openBotFromBtn(this)">
       <div class="card-thumb">
         ${thumb}
         <div class="card-overlay"></div>
@@ -693,8 +684,11 @@ function renderCards(items) {
   }).join('');
 }
 
+function openBotFromBtn(el) {
+  openBot(el.dataset.code);
+}
+
 function openBot(code) {
-  // t.me/bot?start=KOD — Telegram botga o'tib, avtomatik shu kodni yuboradi
   window.open(`https://t.me/${BOT_USERNAME}?start=${encodeURIComponent(code)}`, '_blank');
 }
 
@@ -742,8 +736,10 @@ async function openDetail(item) {
       <div class="detail-ep-title">Qismlar (${episodes.length} ta)</div>
       <div class="ep-grid">
         ${episodes.map(ep => `
-          <div class="ep-btn" onclick="openBot('${esc(item.code)}')">
-            ${ep.episode_num}-qism
+          <div class="ep-btn"
+               data-code="${esc(item.code)}"
+               onclick="openBotFromBtn(this)">
+            ${parseInt(ep.episode_num)}-qism
           </div>
         `).join('')}
       </div>`;
@@ -863,7 +859,10 @@ function renderContentTable(items) {
       <td style="color:var(--muted);font-size:0.78rem;">${i.added_at ? esc(i.added_at.slice(0,10)) : '—'}</td>
       <td>
         <button class="action-btn edit" onclick='editContent(${JSON.stringify(i).replace(/"/g,"&quot;")})'>Tahrir</button>
-        <button class="action-btn del" onclick="deleteContent('${esc(i.category)}','${esc(i.code)}')">O'chir</button>
+        <button class="action-btn del"
+          data-cat="${esc(i.category)}"
+          data-code="${esc(i.code)}"
+          onclick="deleteFromBtn(this)">O'chir</button>
       </td>
     </tr>`).join('');
 }
@@ -906,6 +905,10 @@ async function saveContent() {
   const res = await api('/api/content', { method: 'POST', body: JSON.stringify({ category: cat, code, title, description: desc }) });
   if (res && res.ok) { showToast('Saqlandi!', 'success'); closeAddModal(); loadContent(); }
   else showToast(res?.error || 'Xatolik', 'error');
+}
+
+function deleteFromBtn(el) {
+  deleteContent(el.dataset.cat, el.dataset.code);
 }
 
 async function deleteContent(cat, code) {
