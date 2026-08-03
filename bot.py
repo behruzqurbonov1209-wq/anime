@@ -937,9 +937,8 @@ async def addep_get_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data[buf_key].append((file_id, file_type))
         return ADDEP_FILE  # hali job ishlaguncha state da qolamiz
 
-    # Bitta fayl — darhol saqlash
-    next_num = db.get_next_episode_num(cat, code)
-    db.add_episode(cat, code, next_num, file_id, file_type)
+    # Bitta fayl — atomic saqlash (race condition yo'q)
+    next_num = db.add_episode_auto(cat, code, file_id, file_type)
     item     = db.get_item(cat, code)
     cat_name = CATEGORY_NAMES.get(cat, cat)
 
@@ -977,9 +976,8 @@ async def _flush_media_group(context: ContextTypes.DEFAULT_TYPE):
     # Ketma-ket qism raqami bilan saqlash
     saved = []
     for file_id, file_type in files:
-        next_num = db.get_next_episode_num(cat, code)
-        db.add_episode(cat, code, next_num, file_id, file_type)
-        saved.append(next_num)
+        num = db.add_episode_auto(cat, code, file_id, file_type)
+        saved.append(num)
 
     # Buferni tozalash
     context.user_data.pop(buf_key, None)
@@ -1100,7 +1098,10 @@ async def delete_confirm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def admin_broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    if not is_admin(query.from_user.id):
+    uid = query.from_user.id
+    # Faqat super admin yoki manager broadcast yuborishi mumkin
+    if not (is_super_admin(uid) or db.get_admin_role(uid) == "manager"):
+        await query.answer("❌ Broadcast huquqi yo'q!", show_alert=True)
         return
 
     stats = db.get_stats()
@@ -1656,7 +1657,24 @@ def run_web_server():
         def log_message(self, f, *a): pass
 
         def client_ip(self):
-            return self.headers.get("X-Forwarded-For", self.client_address[0]).split(",")[0].strip()
+            import ipaddress
+            PRIVATE = [
+                ipaddress.ip_network('10.0.0.0/8'),
+                ipaddress.ip_network('172.16.0.0/12'),
+                ipaddress.ip_network('192.168.0.0/16'),
+                ipaddress.ip_network('127.0.0.0/8'),
+            ]
+            def is_private(ip):
+                try:
+                    return any(ipaddress.ip_address(ip) in net for net in PRIVATE)
+                except Exception:
+                    return False
+
+            peer = self.client_address[0]
+            fwd  = self.headers.get("X-Forwarded-For", "")
+            if is_private(peer) and fwd:
+                return fwd.split(",")[0].strip()
+            return peer
 
         def get_token(self):
             for p in self.headers.get("Cookie","").split(";"):
@@ -1725,7 +1743,10 @@ def run_web_server():
                 self.send_file("hero-bg.png","image/png"); return
 
             if p == "/api/stats":
-                self.send_json(db.get_stats()); return
+                stats = db.get_stats()
+                # Foydalanuvchi sonini ommaviy ko'rsatmaymiz
+                safe = {k: v for k, v in stats.items() if k != "users"}
+                self.send_json(safe); return
 
             if p == "/api/content":
                 rows = []
@@ -1746,8 +1767,10 @@ def run_web_server():
                 return
 
             if p.startswith("/api/poster/"):
+                import re
                 file_id = p[12:].strip()
-                if not file_id or not BOT_TKN:
+                # Telegram file_id — faqat harf, raqam, _ va - dan iborat
+                if not file_id or not re.match(r'^[A-Za-z0-9_\-]{10,200}$', file_id):
                     self.send_response(400); self.end_headers(); return
                 try:
                     url  = f"https://api.telegram.org/bot{BOT_TKN}/getFile?file_id={file_id}"
@@ -1806,7 +1829,7 @@ def run_web_server():
                     self.send_response(200)
                     self.send_header("Content-Type","application/json")
                     self.send_header("Set-Cookie",
-                        f"session={tok}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_TTL}")
+                        f"session={tok}; HttpOnly; Secure; SameSite=Strict; Path=/; Max-Age={SESSION_TTL}")
                     out = json.dumps({"ok":True}).encode()
                     self.send_header("Content-Length", len(out))
                     self.end_headers()
