@@ -148,6 +148,10 @@ async def check_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ══════════════════════════════════════════════════════════
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Kategoriya va kod kutish rejimlarini tozalaymiz
+    context.user_data.pop("waiting_for_code", None)
+    context.user_data.pop("category", None)
+
     if update.effective_chat.type != "private":
         return
 
@@ -235,7 +239,10 @@ async def show_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     category = query.data.replace("cat_", "")
+    
+    # Kategoriya va kod kutish rejimini faollashtiramiz
     context.user_data["category"] = category
+    context.user_data["waiting_for_code"] = True
 
     cat_name = CATEGORY_NAMES.get(category, category)
     keyboard = [[InlineKeyboardButton("🔙 Orqaga", callback_data="back_main")]]
@@ -251,6 +258,11 @@ async def show_category(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    
+    # Kategoriya holatini tozalaymiz
+    context.user_data.pop("waiting_for_code", None)
+    context.user_data.pop("category", None)
+    
     await start(update, context)
 
 
@@ -481,6 +493,10 @@ async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not ok:
             await subscription_wall(update, context, not_subbed)
             return
+
+    # Kategoriya tanlanmagan bo'lsa — hech qanday javob qaytarmasdan e'tiborsiz qoldiramiz
+    if not context.user_data.get("waiting_for_code"):
+        return
 
     code = update.message.text.strip().upper()
 
