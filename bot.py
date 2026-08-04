@@ -43,9 +43,6 @@ CATEGORY_NAMES = {
 }
 
 # ── EMOJI KONSTANTALAR ─────────────────────────────────────────────────
-# Oddiy Unicode emoji — hamma uchun ishlaydi, premium talab etmaydi.
-# Premium emoji (tg-emoji) uchun Telegram botga maxsus ruxsat kerak
-# va faqat premium foydalanuvchilarda ko'rinadi.
 PE_ANIME  = "🎌"
 PE_DRAMA  = "🎭"
 PE_KINO   = "🎬"
@@ -89,11 +86,9 @@ async def check_subscription(bot, user_id: int) -> tuple[bool, list]:
                 not_subbed.append(ch)
         except Exception as e:
             err = str(e).lower()
-            # Bot kanalga kirish huquqi yo'q bo'lsa — tekshirmasdan o'tkazib yuboramiz
             if "not enough rights" in err or "bot is not a member" in err or "chat not found" in err:
                 logger.warning(f"Kanal {ch['chat_id']} tekshirib bo'lmadi: {e}")
                 continue
-            # Boshqa xatolikda — obuna bo'lmagan deb hisoblaymiz
             not_subbed.append(ch)
 
     return len(not_subbed) == 0, not_subbed
@@ -108,7 +103,6 @@ async def subscription_wall(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         if username:
             url = f"https://t.me/{username.lstrip('@')}"
         else:
-            # Shaxsiy guruh uchun invite link
             url = f"https://t.me/c/{str(ch['chat_id']).replace('-100', '')}"
         keyboard.append([InlineKeyboardButton(f"📢 {label}", url=url)])
 
@@ -137,14 +131,12 @@ async def check_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.answer("Tekshirilmoqda...", show_alert=False)
     ok, not_subbed = await check_subscription(context.bot, query.from_user.id)
     if ok:
-        # Obuna bo'lgan — start menyusiga o'tamiz
         try:
             await query.delete_message()
         except Exception:
             pass
         await start(update, context)
     else:
-        # Hali obuna bo'lmagan — yangi xabar yuboramiz (edit emas)
         try:
             await query.delete_message()
         except Exception:
@@ -169,15 +161,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await subscription_wall(update, context, not_subbed)
             return
 
-    # Saytdan ?start=KOD bilan kelgan bo'lsa — to'g'ri shu serialni yuboramiz
+    # Saytdan ?start=KOD bilan kelgan bo'lsa
     if context.args:
         code = context.args[0].upper()
-        # Qaysi kategoriyada ekanligini topamiz
         for cat in ("anime", "drama", "kino"):
             item = db.get_item(cat, code)
             if item:
                 context.user_data["category"] = cat
-                # handle_code ga o'xshash ishlov
                 episodes = db.get_episodes(cat, code)
                 cat_name = CATEGORY_NAMES.get(cat, cat)
                 ep_buttons = []
@@ -215,7 +205,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         parse_mode="HTML"
                     )
                 return
-        # Kod topilmadi — oddiy start
         await update.message.reply_text(f"❌ <b>{code}</b> topilmadi.", parse_mode="HTML")
         return
 
@@ -273,7 +262,7 @@ async def admin_poster_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     query = update.callback_query
     await query.answer()
     if not is_admin(query.from_user.id):
-        return
+        return ConversationHandler.END
 
     keyboard = [
         [InlineKeyboardButton("➕ Poster qo'shish",    callback_data="poster_action_add")],
@@ -292,6 +281,7 @@ async def admin_poster_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
             reply_markup=InlineKeyboardMarkup(keyboard),
             parse_mode="HTML"
         )
+    return POSTER_CODE
 
 
 async def poster_select_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -380,40 +370,6 @@ async def poster_action_callback(update: Update, context: ContextTypes.DEFAULT_T
             parse_mode="HTML"
         )
     return POSTER_CODE
-    """Tugmadan serial tanlanganda rasm so'rash"""
-    query = update.callback_query
-    await query.answer()
-    code = query.data.replace("poster_pick_", "").upper()
-    cat  = context.user_data.get("poster_cat")
-    item = db.get_item(cat, code)
-
-    if not item:
-        await query.answer("Topilmadi!", show_alert=True)
-        return
-
-    context.user_data["poster_code"]     = code
-    context.user_data["waiting_poster_img"] = True
-
-    has_poster = "✅ Poster bor — almashtirish uchun yuborish" if item.get("poster") else "❌ Poster yo'q — qo'shish uchun yuborish"
-    keyboard = [[InlineKeyboardButton("🔙 Orqaga", callback_data=f"poster_cat_{cat}")]]
-
-    if item.get("poster"):
-        await query.edit_message_text(
-            f"🖼 <b>{item['title']}</b>\n\n"
-            f"{has_poster}\n\n"
-            f"Yangi rasm yuboring:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
-        )
-    else:
-        await query.edit_message_text(
-            f"🖼 <b>{item['title']}</b>\n\n"
-            f"{has_poster}\n\n"
-            f"Rasm yuboring:",
-            reply_markup=InlineKeyboardMarkup(keyboard),
-            parse_mode="HTML"
-        )
-    return POSTER_IMG
 
 
 async def poster_get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -617,7 +573,6 @@ async def send_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # callback: ep_anime_A001_3
     parts = query.data.split("_", 3)
-    # parts = ["ep", category, code, episode_num]
     _, category, code, ep_num_str = parts
     episode_num = int(ep_num_str)
 
@@ -858,7 +813,7 @@ async def addep_select_cat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await query.answer()
     cat = query.data.replace("addep_", "")
     context.user_data["ep_cat"]          = cat
-    context.user_data["waiting_ep_code"] = True  # handle_code ushlab olmasin
+    context.user_data["waiting_ep_code"] = True
 
     items = db.get_all_items(cat)
     cat_name = CATEGORY_NAMES.get(cat, cat)
@@ -906,7 +861,6 @@ async def addep_get_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def addep_get_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Admin video/hujjat yuborganda — bitta ham, ko'p ham — avtomatik ketma-ket qism qilib saqlaydi.
-    Telegram media_group_id orqali bir vaqtda yuborilgan fayllarni aniqlaydi.
     """
     cat  = context.user_data.get("ep_cat")
     code = context.user_data.get("ep_code")
@@ -931,14 +885,12 @@ async def addep_get_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
     media_group_id = update.message.media_group_id
 
     if media_group_id:
-        # Media group — fayllarni vaqtinchalik buferga yig'amiz
         buf_key = f"mg_{media_group_id}"
         if buf_key not in context.user_data:
             context.user_data[buf_key] = []
-            # Barcha fayllar kelganidan keyin saqlash uchun job qo'shamiz
             context.job_queue.run_once(
                 _flush_media_group,
-                when=2.5,          # 2.5 soniya kutamiz (hammasi kelsin)
+                when=2.5,
                 name=buf_key,
                 data={
                     "cat": cat, "code": code,
@@ -947,9 +899,9 @@ async def addep_get_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 }
             )
         context.user_data[buf_key].append((file_id, file_type))
-        return ADDEP_FILE  # hali job ishlaguncha state da qolamiz
+        return ADDEP_FILE
 
-    # Bitta fayl — atomic saqlash (race condition yo'q)
+    # Bitta fayl — atomic saqlash
     next_num = db.add_episode_auto(cat, code, file_id, file_type)
     item     = db.get_item(cat, code)
     cat_name = CATEGORY_NAMES.get(cat, cat)
@@ -968,7 +920,6 @@ async def addep_get_file(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=InlineKeyboardMarkup(keyboard),
         parse_mode="HTML"
     )
-    # State da qolamiz — admin davom ettirishni tanlaydi
     return ADDEP_FILE
 
 
@@ -985,13 +936,11 @@ async def _flush_media_group(context: ContextTypes.DEFAULT_TYPE):
     if not files:
         return
 
-    # Ketma-ket qism raqami bilan saqlash
     saved = []
     for file_id, file_type in files:
         num = db.add_episode_auto(cat, code, file_id, file_type)
         saved.append(num)
 
-    # Buferni tozalash
     context.user_data.pop(buf_key, None)
 
     item     = db.get_item(cat, code)
@@ -1022,7 +971,6 @@ async def continue_episode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """'Keyingi qism qo'sh' tugmasi"""
     query = update.callback_query
     await query.answer()
-    # cont_ep_anime_A001
     parts = query.data.split("_", 3)
     cat  = parts[2]
     code = parts[3]
@@ -1111,7 +1059,6 @@ async def admin_broadcast_start(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     await query.answer()
     uid = query.from_user.id
-    # Faqat super admin yoki manager broadcast yuborishi mumkin
     if not (is_super_admin(uid) or db.get_admin_role(uid) == "manager"):
         await query.answer("❌ Broadcast huquqi yo'q!", show_alert=True)
         return
@@ -1133,9 +1080,6 @@ async def admin_broadcast_start(update: Update, context: ContextTypes.DEFAULT_TY
 async def do_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """
     Broadcast: copy_message orqali yuboriladi.
-    Admin qanday yuborsa — premium emoji, entities, caption, sticker, voice,
-    animation, video_note — HAMMASI aynan saqlanadi.
-    parse_mode="HTML" ishlatilmaydi — entities Telegram tomonidan saqlanadi.
     """
     users    = db.get_all_users()
     sent     = 0
@@ -1171,7 +1115,6 @@ async def do_broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 failed += 1
 
-        # Har 25 xabardan keyin 1 soniya — flood limitdan saqlanish
         if (i + 1) % 25 == 0:
             await asyncio.sleep(1)
 
@@ -1491,7 +1434,7 @@ async def ch_add_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def ch_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
 
-    # Forward qilingan xabar orqali ID olish (yangi PTB: forward_origin)
+    # Forward qilingan xabar orqali ID olish
     origin = getattr(msg, "forward_origin", None)
     logger.info(f"ch_add_get_id: origin={origin}, msg_type={type(msg)}, text={msg.text}")
     forward_chat = None
@@ -1544,8 +1487,6 @@ async def ch_add_get_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return ConversationHandler.END
     except Exception as e:
-        # get_chat ishlamasa ham ID to'g'ri formatda bo'lsa — saqlab qo'yamiz
-        # Telegram kanal ID formati: -100XXXXXXXXXX
         import re
         clean = text.strip()
         if re.match(r'^-100\d{8,12}$', clean):
@@ -1750,7 +1691,6 @@ def run_web_server():
 
             if p == "/api/stats":
                 stats = db.get_stats()
-                # Foydalanuvchi sonini ommaviy ko'rsatmaymiz
                 safe = {k: v for k, v in stats.items() if k != "users"}
                 self.send_json(safe); return
 
@@ -1775,7 +1715,6 @@ def run_web_server():
             if p.startswith("/api/poster/"):
                 import re
                 file_id = p[12:].strip()
-                # Telegram file_id — faqat harf, raqam, _ va - dan iborat
                 if not file_id or not re.match(r'^[A-Za-z0-9_\-]{10,200}$', file_id):
                     self.send_response(400); self.end_headers(); return
                 try:
@@ -2036,6 +1975,7 @@ def main():
             POSTER_IMG: [
                 MessageHandler(filters.PHOTO | filters.Document.IMAGE, poster_get_img),
                 CallbackQueryHandler(poster_select_cat, pattern="^poster_cat_"),
+                CallbackQueryHandler(admin_poster_start, pattern="^admin_poster$"),
             ],
         },
         fallbacks=[
@@ -2066,8 +2006,6 @@ def main():
     app.add_handler(CallbackQueryHandler(admin_panel,        pattern="^admin_panel$"),  group=1)
     app.add_handler(CallbackQueryHandler(admin_stats,        pattern="^admin_stats$"),    group=1)
     app.add_handler(CallbackQueryHandler(admin_channels,     pattern="^admin_channels$"), group=1)
-    app.add_handler(CallbackQueryHandler(admin_poster_start, pattern="^admin_poster$"),   group=1)
-    app.add_handler(CallbackQueryHandler(poster_select_cat,  pattern="^poster_cat_"),     group=1)
     app.add_handler(CallbackQueryHandler(ch_del_start,       pattern="^ch_del$"),         group=1)
     app.add_handler(CallbackQueryHandler(ch_rm_callback,     pattern="^ch_rm_"),          group=1)
     app.add_handler(CallbackQueryHandler(admin_admins,       pattern="^admin_admins$"),   group=1)
