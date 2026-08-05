@@ -67,12 +67,10 @@ class Database:
                 CREATE INDEX IF NOT EXISTS idx_content_cat_code ON content(category, code);
                 CREATE INDEX IF NOT EXISTS idx_episodes_cat_code ON episodes(category, code);
             """)
-            # Mavjud DB ga poster ustun qo'shish (migration)
             try:
                 conn.execute("ALTER TABLE content ADD COLUMN poster TEXT DEFAULT ''")
             except Exception:
                 pass
-            # Mavjud DB ga role ustun qo'shish (migration)
             try:
                 conn.execute("ALTER TABLE admins ADD COLUMN role TEXT DEFAULT 'content'")
             except Exception:
@@ -150,6 +148,26 @@ class Database:
                 (category, code.upper(), episode_num, title, file_id, file_type)
             )
 
+    def add_episode_auto(self, category: str, code: str,
+                         file_id: str, file_type: str = "video", title: str = "") -> int:
+        """
+        Keyingi bo'sh episode_num ni avtomatik topib saqlaydi.
+        Saqlangan episode_num ni qaytaradi.
+        """
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT MAX(episode_num) FROM episodes WHERE category=? AND code=?",
+                (category, code.upper())
+            ).fetchone()
+            next_num = (row[0] or 0) + 1
+            conn.execute(
+                """INSERT OR REPLACE INTO episodes
+                   (category, code, episode_num, title, file_id, file_type)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (category, code.upper(), next_num, title, file_id, file_type)
+            )
+            return next_num
+
     def get_episodes(self, category: str, code: str) -> list:
         with self._conn() as conn:
             rows = conn.execute(
@@ -194,10 +212,6 @@ class Database:
     # ── ADMINLAR ──────────────────────────────────────────────────────────
 
     def add_admin(self, user_id: int, username: str, full_name: str, added_by: int, role: str = "content"):
-        """
-        role = 'content'  — faqat kontent qo'shish/o'chirish
-        role = 'manager'  — kontent + admin qo'shish/o'chirish
-        """
         with self._conn() as conn:
             conn.execute(
                 """INSERT OR REPLACE INTO admins (user_id, username, full_name, added_by, role)
@@ -206,7 +220,6 @@ class Database:
             )
 
     def get_admin_role(self, user_id: int) -> str:
-        """Admin rolini qaytaradi: 'super', 'manager', 'content' yoki ''"""
         with self._conn() as conn:
             row = conn.execute(
                 "SELECT role FROM admins WHERE user_id=?", (user_id,)
@@ -214,14 +227,12 @@ class Database:
             return row["role"] if row else ""
 
     def can_delete_content(self, user_id: int, super_ids: list) -> bool:
-        """Kontent o'chira oladimi?"""
         if user_id in super_ids:
             return True
         role = self.get_admin_role(user_id)
         return role in ("content", "manager")
 
     def can_manage_admins(self, user_id: int, super_ids: list) -> bool:
-        """Admin qo'sha/o'chira oladimi?"""
         if user_id in super_ids:
             return True
         role = self.get_admin_role(user_id)
