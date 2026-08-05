@@ -218,23 +218,47 @@ async def check_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE)
     ok, not_subbed = await check_subscription(context.bot, query.from_user.id)
 
     if ok:
-        # Obuna bo'lgan — xabarni o'chirib tabrik + start menyusi
-        try:
-            await query.delete_message()
-        except Exception:
-            pass
+        user = query.from_user
+        db.add_user(user.id, user.username or "", user.full_name or "")
 
-        await context.bot.send_message(
-            chat_id=query.from_user.id,
-            text=(
-                "✅ <b>Obuna tasdiqlandi!</b>\n\n"
-                "Botdan to\'liq foydalanishingiz mumkin. "
-                "Quyidan kategoriya tanlang 👇"
-            ),
-            parse_mode="HTML"
+        keyboard = [
+            [
+                InlineKeyboardButton("🎌 Anime",  callback_data="cat_anime"),
+                InlineKeyboardButton("🎭 Drama",  callback_data="cat_drama"),
+            ],
+            [
+                InlineKeyboardButton("🎬 Kino",    callback_data="cat_kino"),
+                InlineKeyboardButton("🌐 Веб сайт", url="https://anime-production-df87.up.railway.app"),
+            ],
+        ]
+        if is_admin(user.id):
+            keyboard.append([InlineKeyboardButton("⚙️ Admin Panel", callback_data="admin_panel")])
+
+        text = (
+            "✅ <b>Obuna tasdiqlandi!</b>\n\n"
+            f"Salom, <b>{user.first_name}</b>!\n"
+            "Quyidan kategoriya tanlang 👇"
         )
 
-        await start(update, context)
+        # Obuna xabarini yangilaymiz — o'chirmasdan keyboard qo'shamiz
+        try:
+            await query.edit_message_text(
+                text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML"
+            )
+        except Exception:
+            # edit ishlamasa yangi xabar
+            try:
+                await query.delete_message()
+            except Exception:
+                pass
+            await context.bot.send_message(
+                chat_id=user.id,
+                text=text,
+                reply_markup=InlineKeyboardMarkup(keyboard),
+                parse_mode="HTML"
+            )
     else:
         # Hali obuna bo'lmagan
         await query.answer(
