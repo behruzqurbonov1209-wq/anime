@@ -211,19 +211,36 @@ async def subscription_wall(update: Update, context: ContextTypes.DEFAULT_TYPE, 
 
 
 async def check_sub_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """'Obuna bo'ldim' tugmasi"""
+    """'Obuna bo'ldim' tugmasi — tekshiradi va avtomatik xabar yuboradi"""
     query = update.callback_query
     await query.answer("Tekshirilmoqda...", show_alert=False)
+
     ok, not_subbed = await check_subscription(context.bot, query.from_user.id)
+
     if ok:
-        # Obuna bo'lgan — start menyusiga o'tamiz
+        # Obuna bo'lgan — xabarni o'chirib tabrik + start menyusi
         try:
             await query.delete_message()
         except Exception:
             pass
+
+        await context.bot.send_message(
+            chat_id=query.from_user.id,
+            text=(
+                "✅ <b>Obuna tasdiqlandi!</b>\n\n"
+                "Botdan to\'liq foydalanishingiz mumkin. "
+                "Quyidan kategoriya tanlang 👇"
+            ),
+            parse_mode="HTML"
+        )
+
         await start(update, context)
     else:
-        # Hali obuna bo'lmagan — yangi xabar yuboramiz (edit emas)
+        # Hali obuna bo'lmagan
+        await query.answer(
+            "❌ Siz hali barcha kanallarga obuna bo'lmagansiz!",
+            show_alert=True
+        )
         try:
             await query.delete_message()
         except Exception:
@@ -303,8 +320,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             InlineKeyboardButton("🎌 Anime",  callback_data="cat_anime"),
             InlineKeyboardButton("🎭 Drama",  callback_data="cat_drama"),
         ],
-        [InlineKeyboardButton("🎬 Kino", callback_data="cat_kino")],
-        [InlineKeyboardButton("🌐 Веб сайт", url="https://anime-production-df87.up.railway.app")],
+        [
+            InlineKeyboardButton("🎬 Kino",    callback_data="cat_kino"),
+            InlineKeyboardButton("🌐 Веб сайт", url="https://anime-production-df87.up.railway.app"),
+        ],
     ]
     if is_admin(user.id):
         keyboard.append([InlineKeyboardButton("⚙️ Admin Panel", callback_data="admin_panel")])
