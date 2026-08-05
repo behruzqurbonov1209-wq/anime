@@ -618,48 +618,49 @@ async def poster_get_img(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Foydalanuvchi kod yozganda — qismlar tugmalarini ko'rsatadi"""
-    # Faqat shaxsiy chatda ishlaydi
+    """
+    Foydalanuvchi kod yozganda — hamma kategoriyadan qidiradi.
+    Kategoriya tanlanmagan bo'lsa ham ishlaydi.
+    Admin ConversationHandler state da bo'lsa — hech narsa qilmaydi.
+    """
     if update.effective_chat.type != "private":
         return
+
+    # Admin ConversationHandler state da bo'lsa — bu handler ishlamasin
+    # (addep, add_conv, del_conv va boshqalar group=0 da o'zlari ishlaydi)
+    if is_admin(update.effective_user.id):
+        conv_flags = [
+            "waiting_channel", "waiting_ep_code", "waiting_poster_code",
+            "waiting_new_admin", "waiting_add_code", "waiting_add_title",
+            "waiting_add_desc", "waiting_del_code",
+        ]
+        if any(context.user_data.get(f) for f in conv_flags):
+            return
 
     user = update.effective_user
     db.add_user(user.id, user.username or "", user.full_name or "")
 
-    # Admin kanal kutayotgan bo'lsa
-    if is_admin(user.id) and context.user_data.get("waiting_channel"):
-        return await ch_add_get_id(update, context)
-
-    # Admin qism kodi kutayotgan bo'lsa
-    if is_admin(user.id) and context.user_data.get("waiting_ep_code"):
-        return await addep_get_code(update, context)
-
-    # Admin poster kodi kutayotgan bo'lsa
-    if is_admin(user.id) and context.user_data.get("waiting_poster_code"):
-        return await poster_get_code(update, context)
-
-    # Admin yangi admin ID kutayotgan bo'lsa
-    if is_admin(user.id) and context.user_data.get("waiting_new_admin"):
-        return await adm_add_get_id(update, context)
-
-    # Obuna tekshiruvi
+    # Obuna tekshiruvi (faqat oddiy foydalanuvchilar)
     if not is_admin(user.id):
         ok, not_subbed = await check_subscription(context.bot, user.id)
         if not ok:
             await subscription_wall(update, context, not_subbed)
             return
 
-    code = update.message.text.strip().upper()
+    text_input = update.message.text.strip()
+    code = text_input.upper()
 
-    # Kategoriyadan qidirish
-    category = context.user_data.get("category")
+    # Hamma kategoriyadan qidirish
     found = None
     found_cat = None
 
+    # Avval tanlangan kategoriyadan qidirish
+    category = context.user_data.get("category")
     if category:
         found = db.get_item(category, code)
         found_cat = category
 
+    # Topilmasa — hamma kategoriyadan qidirish
     if not found:
         for cat in ["anime", "drama", "kino"]:
             item = db.get_item(cat, code)
@@ -669,10 +670,37 @@ async def handle_code(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 break
 
     if not found:
+        # Agar matn juda qisqa yoki raqam/harf kodga o'xshamasa
+        if len(text_input) < 2 or len(text_input) > 10:
+            keyboard = [
+                [
+                    InlineKeyboardButton("🎌 Anime", callback_data="cat_anime"),
+                    InlineKeyboardButton("🎭 Drama", callback_data="cat_drama"),
+                ],
+                [
+                    InlineKeyboardButton("🎬 Kino",    callback_data="cat_kino"),
+                    InlineKeyboardButton("🌐 Веб сайт", url="https://anime-production-df87.up.railway.app"),
+                ],
+            ]
+            await update.message.reply_text(
+                "📋 Kategoriya tanlang yoki serial kodini yozing:",
+                reply_markup=InlineKeyboardMarkup(keyboard)
+            )
+            return
         await update.message.reply_text(
             f"❌ <b>{code}</b> kodi topilmadi.\n\n"
-            "To'g'ri kod kiriting yoki /start bosing.",
-            parse_mode="HTML"
+            "To'g'ri kodni kiriting yoki quyidan kategoriya tanlang.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup([
+                [
+                    InlineKeyboardButton("🎌 Anime", callback_data="cat_anime"),
+                    InlineKeyboardButton("🎭 Drama", callback_data="cat_drama"),
+                ],
+                [
+                    InlineKeyboardButton("🎬 Kino",    callback_data="cat_kino"),
+                    InlineKeyboardButton("🌐 Веб сайт", url="https://anime-production-df87.up.railway.app"),
+                ],
+            ])
         )
         return
 
@@ -2072,6 +2100,14 @@ def main():
             ADDEP_CODE: [MessageHandler(filters.TEXT & ~filters.COMMAND, addep_get_code)],
             ADDEP_FILE: [
                 MessageHandler(filters.VIDEO | filters.Document.ALL | filters.PHOTO, addep_get_file),
+                # Matn yuborilsa — davom ettirish yoki bekor qilish eslatmasi
+                MessageHandler(
+                    filters.TEXT & ~filters.COMMAND,
+                    lambda u, c: u.message.reply_text(
+                        "📹 Video yoki hujjat yuboring.\n"
+                        "Bekor qilish: /cancel"
+                    )
+                ),
                 CallbackQueryHandler(continue_episode, pattern="^cont_ep_"),
                 CallbackQueryHandler(admin_panel,      pattern="^admin_panel$"),
             ],
